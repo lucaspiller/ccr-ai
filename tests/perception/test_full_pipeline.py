@@ -2,18 +2,16 @@
 Full pipeline integration tests for the perception layer.
 """
 
+import time
+
 import pytest
 import torch
-import time
-from src.perception import (
-    GameStateProcessor,
-    PerceptionConfig,
-    process_game_state,
-    get_combined_embedding,
-)
+
 from src.game.board import Board, Direction
-from src.game.sprites import SpriteManager
 from src.game.engine import GameEngine
+from src.game.sprites import SpriteManager
+from src.perception import (GameStateProcessor, PerceptionConfig,
+                            get_combined_embedding, process_game_state)
 
 
 class TestFullPerceptionPipeline:

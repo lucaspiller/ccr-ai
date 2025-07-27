@@ -4,17 +4,13 @@ Main game state processor for converting raw game state to perception output.
 
 import time
 from typing import Any, Dict, Optional
+
 import torch
 
-from .encoders import GridEncoder, GlobalFeatureExtractor
 from .cat_encoder import CatSetProcessor
-from .data_types import (
-    PerceptionOutput,
-    PerceptionConfig,
-    PerceptionMetrics,
-    GRID_WIDTH,
-    GRID_HEIGHT,
-)
+from .data_types import (GRID_HEIGHT, GRID_WIDTH, PerceptionConfig,
+                         PerceptionMetrics, PerceptionOutput)
+from .encoders import GlobalFeatureExtractor, GridEncoder
 
 
 class GameStateProcessor:

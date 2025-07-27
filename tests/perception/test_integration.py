@@ -4,10 +4,11 @@ Integration tests for GridEncoder with real game state.
 
 import pytest
 import torch
-from src.perception.encoders import GridEncoder, GlobalFeatureExtractor
+
 from src.game.board import Board, Direction
-from src.game.sprites import SpriteManager
 from src.game.engine import GameEngine
+from src.game.sprites import SpriteManager
+from src.perception.encoders import GlobalFeatureExtractor, GridEncoder
 
 
 class TestGridEncoderIntegration:

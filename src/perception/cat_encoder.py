@@ -3,9 +3,11 @@ Cat set encoder for processing variable-length cat lists into fixed embeddings.
 """
 
 from typing import Any, Dict, List, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from src.game.board import Direction
 from src.game.sprites import SpriteType
 

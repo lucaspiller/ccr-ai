@@ -5,8 +5,9 @@ Tests for CatSetEncoder and CatSetProcessor.
 import pytest
 import torch
 import torch.nn as nn
-from src.perception.cat_encoder import CatSetEncoder, CatSetProcessor
+
 from src.game.sprites import SpriteType
+from src.perception.cat_encoder import CatSetEncoder, CatSetProcessor
 
 
 class TestCatSetEncoder:

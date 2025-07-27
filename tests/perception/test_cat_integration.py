@@ -4,10 +4,11 @@ Integration tests for CatSetEncoder with real game engine states.
 
 import pytest
 import torch
-from src.perception.cat_encoder import CatSetProcessor
+
 from src.game.board import Board, Direction
-from src.game.sprites import SpriteManager
 from src.game.engine import GameEngine
+from src.game.sprites import SpriteManager
+from src.perception.cat_encoder import CatSetProcessor
 
 
 class TestCatSetIntegration:

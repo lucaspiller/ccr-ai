@@ -4,8 +4,8 @@ Data types and constants for the perception layer.
 
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
-import torch
 
+import torch
 
 # Constants for tensor shapes and dimensions
 GRID_CHANNELS = 28

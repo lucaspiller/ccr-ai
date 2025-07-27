@@ -3,8 +3,10 @@ Grid and feature encoders for converting game state to tensor representations.
 """
 
 from typing import Any, Dict, List, Tuple
-import torch
+
 import numpy as np
+import torch
+
 from src.game.board import Direction
 from src.game.sprites import SpriteType
 

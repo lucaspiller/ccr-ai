@@ -4,18 +4,14 @@ Tests for GameStateProcessor and related components.
 
 import pytest
 import torch
-from src.perception.processors import (
-    GameStateProcessor,
-    BatchGameStateProcessor,
-    process_game_state,
-    get_combined_embedding,
-)
-from src.perception.data_types import (
-    PerceptionConfig,
-    PerceptionOutput,
-    PerceptionMetrics,
-)
+
 from src.game.sprites import SpriteType
+from src.perception.data_types import (PerceptionConfig, PerceptionMetrics,
+                                       PerceptionOutput)
+from src.perception.processors import (BatchGameStateProcessor,
+                                       GameStateProcessor,
+                                       get_combined_embedding,
+                                       process_game_state)
 
 
 class TestPerceptionOutput:

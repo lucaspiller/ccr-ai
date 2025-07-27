@@ -27,25 +27,7 @@ class TestPuzzleMode:
         )
 
         board_builder = BoardBuilder(config, seed=42)
-        board = board_builder.generate_board()
-
-        level_builder = LevelBuilder(config.board_w, config.board_h, "Test Puzzle")
-        level_builder.board = board.copy()
-
-        # Add sprites
-        mice_positions = getattr(board, "mice_positions", [])
-        for i, (x, y) in enumerate(mice_positions):
-            level_builder.add_mouse(x, y, f"mouse_{i}", Direction.RIGHT)
-
-        cat_positions = getattr(board, "cat_positions", [])
-        for i, (x, y) in enumerate(cat_positions):
-            level_builder.add_cat(x, y, f"cat_{i}", Direction.RIGHT)
-
-        rocket_positions = board.find_cells_by_type(CellType.ROCKET)
-        for i, (x, y) in enumerate(rocket_positions):
-            level_builder.add_rocket_sprite(x, y, f"rocket_{i}")
-
-        level = level_builder.build()
+        level = board_builder.generate_level("Test Puzzle")
         engine = level.create_engine(max_steps=1000, seed=42, puzzle_mode=True)
 
         # Verify puzzle mode initialization
@@ -58,12 +40,7 @@ class TestPuzzleMode:
         """Test that arrow placement respects the budget in placement phase."""
         config = BoardConfig(arrow_budget=2)
         board_builder = BoardBuilder(config, seed=42)
-        board = board_builder.generate_board()
-
-        level_builder = LevelBuilder(config.board_w, config.board_h, "Test Puzzle")
-        level_builder.board = board.copy()
-
-        level = level_builder.build()
+        level = board_builder.generate_level("Test Puzzle")
         engine = level.create_engine(puzzle_mode=True)
 
         # Should be able to place up to budget
@@ -79,12 +56,7 @@ class TestPuzzleMode:
         """Test transitioning from placement to running phase."""
         config = BoardConfig()
         board_builder = BoardBuilder(config, seed=42)
-        board = board_builder.generate_board()
-
-        level_builder = LevelBuilder(config.board_w, config.board_h, "Test Puzzle")
-        level_builder.board = board.copy()
-
-        level = level_builder.build()
+        level = board_builder.generate_level("Test Puzzle")
         engine = level.create_engine(puzzle_mode=True)
 
         # Start in placement phase
@@ -117,27 +89,7 @@ class TestPuzzleMode:
         )
 
         board_builder = BoardBuilder(config, seed=42)
-        board = board_builder.generate_board()
-
-        level_builder = LevelBuilder(config.board_w, config.board_h, "Puzzle 42")
-        level_builder.board = board.copy()
-
-        # Add sprites for mice
-        mice_positions = getattr(board, "mice_positions", [])
-        for i, (x, y) in enumerate(mice_positions):
-            level_builder.add_mouse(x, y, f"mouse_{i}", Direction.RIGHT)
-
-        # Add sprites for cats
-        cat_positions = getattr(board, "cat_positions", [])
-        for i, (x, y) in enumerate(cat_positions):
-            level_builder.add_cat(x, y, f"cat_{i}", Direction.RIGHT)
-
-        # Add rocket sprites
-        rocket_positions = board.find_cells_by_type(CellType.ROCKET)
-        for i, (x, y) in enumerate(rocket_positions):
-            level_builder.add_rocket_sprite(x, y, f"rocket_{i}")
-
-        level = level_builder.build()
+        level = board_builder.generate_level("Puzzle 42")
         engine = level.create_engine(max_steps=1000, seed=42, puzzle_mode=True)
 
         # Place the winning arrows as specified
@@ -185,25 +137,7 @@ class TestPuzzleMode:
         )
 
         board_builder = BoardBuilder(config, seed=123)
-        board = board_builder.generate_board()
-
-        level_builder = LevelBuilder(config.board_w, config.board_h, "Lose Test")
-        level_builder.board = board.copy()
-
-        # Add sprites
-        mice_positions = getattr(board, "mice_positions", [])
-        for i, (x, y) in enumerate(mice_positions):
-            level_builder.add_mouse(x, y, f"mouse_{i}", Direction.RIGHT)
-
-        cat_positions = getattr(board, "cat_positions", [])
-        for i, (x, y) in enumerate(cat_positions):
-            level_builder.add_cat(x, y, f"cat_{i}", Direction.RIGHT)
-
-        rocket_positions = board.find_cells_by_type(CellType.ROCKET)
-        for i, (x, y) in enumerate(rocket_positions):
-            level_builder.add_rocket_sprite(x, y, f"rocket_{i}")
-
-        level = level_builder.build()
+        level = board_builder.generate_level("Lose Test")
         engine = level.create_engine(max_steps=1000, seed=123, puzzle_mode=True)
 
         # Don't place helpful arrows - let mice likely get captured

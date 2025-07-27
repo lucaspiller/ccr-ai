@@ -2,11 +2,12 @@
 Tests for GridEncoder and GlobalFeatureExtractor.
 """
 
+import numpy as np
 import pytest
 import torch
-import numpy as np
-from src.perception.encoders import GridEncoder, GlobalFeatureExtractor
+
 from src.game.sprites import SpriteType
+from src.perception.encoders import GlobalFeatureExtractor, GridEncoder
 
 
 class TestGridEncoder:

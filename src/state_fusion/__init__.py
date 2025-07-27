@@ -5,7 +5,7 @@ This module provides feature fusion functionality that combines perception outpu
 into a single 128-dimensional embedding for decision-making.
 """
 
-from .data_types import FusionConfig, FusedStateOutput
+from .data_types import FusedStateOutput, FusionConfig
 from .processors import StateFusionProcessor
 
 __all__ = ["FusionConfig", "FusedStateOutput", "StateFusionProcessor"]
