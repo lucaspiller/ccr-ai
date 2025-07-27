@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from src.game.board import CellType, Direction
+from src.game.board_builder import BoardBuilder, BoardConfig
 from src.game.levels import LevelBuilder
 from src.game.visualization import GameVisualizer, HeadlessVisualizer
 
@@ -75,6 +76,47 @@ def run_visualization(headless=False):
             run_visualization(headless=True)
 
 
+def run_puzzle_mode(seed: int, headless: bool = False):
+    """Run puzzle mode board generation and visualization."""
+    config = BoardConfig(
+        board_w=7,
+        board_h=7,
+        num_walls=10,
+        num_mice=3,
+        num_rockets=2,
+        num_cats=1,
+        num_holes=2,
+        arrow_budget=3,
+    )
+
+    board_builder = BoardBuilder(config, seed=seed)
+    level = board_builder.generate_level(f"Puzzle {seed}")
+    board = level.board
+
+    print(f"Generated puzzle board with seed {seed}:")
+    print(board)
+    print(f"Mice positions: {getattr(board, 'mice_positions', [])}")
+    print(f"Cat positions: {getattr(board, 'cat_positions', [])}")
+    print(f"Rockets: {board.find_cells_by_type(CellType.ROCKET)}")
+    print(f"Holes: {board.find_cells_by_type(CellType.HOLE)}")
+    print(f"Arrow budget: {board.max_arrows}")
+    engine = level.create_engine(max_steps=3 * 60 * 60, seed=seed, puzzle_mode=True)
+
+    # Run visualization
+    if headless:
+        visualizer = HeadlessVisualizer(engine)
+        print("Running puzzle mode in headless simulation...")
+        result = visualizer.run_simulation(max_steps=30 * 60, verbose=True)
+        print(f"Final result: {result}")
+    else:
+        try:
+            visualizer = GameVisualizer(engine)
+            visualizer.run()
+        except ImportError:
+            print("Pygame not available. Running in headless mode...")
+            run_puzzle_mode(seed, headless=True)
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -84,15 +126,26 @@ def main():
 Examples:
   python main.py                    # Interactive visualization
   python main.py --headless         # Headless simulation
+  python main.py --puzzle --seed 42 # Generate puzzle board
         """,
     )
 
     parser.add_argument(
         "--headless", action="store_true", help="Run without GUI visualization"
     )
+    parser.add_argument(
+        "--puzzle", action="store_true", help="Run puzzle mode board generation"
+    )
+    parser.add_argument(
+        "--seed", type=int, default=None, help="Random seed for puzzle generation"
+    )
 
     args = parser.parse_args()
-    run_visualization(headless=args.headless)
+
+    if args.puzzle:
+        run_puzzle_mode(args.seed, headless=args.headless)
+    else:
+        run_visualization(headless=args.headless)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import pygame
 
 from .actions import PlaceArrowAction, RemoveArrowAction, WaitAction
 from .board import CellType, Direction
-from .engine import GameEngine, GameResult
+from .engine import GameEngine, GamePhase, GameResult
 from .sprites import BonusState, SpriteState, SpriteType
 
 
@@ -103,15 +103,20 @@ class GameVisualizer:
 
             # Handle automatic stepping for different modes
             if self.engine.result.value == "ongoing":
-                if self.mode == VisualizationMode.AUTO:
-                    # Auto mode - run at game speed
-                    self.auto_step_timer += dt
-                    if self.auto_step_timer >= self.step_delay:
-                        self.engine.step()
-                        self.auto_step_timer = 0
-                elif self.mode == VisualizationMode.MANUAL:
-                    # In manual mode, only advance when spacebar is pressed
-                    pass
+                # Only auto-step if not in puzzle placement phase
+                if (
+                    not self.engine.puzzle_mode
+                    or self.engine.phase == GamePhase.RUNNING
+                ):
+                    if self.mode == VisualizationMode.AUTO:
+                        # Auto mode - run at game speed
+                        self.auto_step_timer += dt
+                        if self.auto_step_timer >= self.step_delay:
+                            self.engine.step()
+                            self.auto_step_timer = 0
+                    elif self.mode == VisualizationMode.MANUAL:
+                        # In manual mode, only advance when spacebar is pressed
+                        pass
 
             # Log any new events
             self._log_new_events()
@@ -126,7 +131,11 @@ class GameVisualizer:
 
         elif key == pygame.K_SPACE:
             if self.engine.result == GameResult.ONGOING:
-                self.engine.step()
+                # In puzzle mode placement phase, don't step
+                if not (
+                    self.engine.puzzle_mode and self.engine.phase == GamePhase.PLACEMENT
+                ):
+                    self.engine.step()
 
         elif key == pygame.K_r:
             self.engine.reset()
@@ -153,6 +162,20 @@ class GameVisualizer:
             self.event_logging_enabled = not self.event_logging_enabled
             status = "enabled" if self.event_logging_enabled else "disabled"
             print(f"Event logging {status}")
+
+        elif key == pygame.K_RETURN or key == pygame.K_KP_ENTER:
+            # Start game in puzzle mode
+            if (
+                self.engine.puzzle_mode
+                and self.engine.phase == GamePhase.PLACEMENT
+                and self.engine.result == GameResult.ONGOING
+            ):
+                print("Arrows:")
+                for (x, y), direction in self.engine.board.arrows.items():
+                    print(f" [({x},{y}),{direction}]")
+                success = self.engine.start_game()
+                if success:
+                    print("Puzzle started")
 
         return True
 
@@ -487,15 +510,34 @@ class GameVisualizer:
             remaining_secs = self.engine.bonus_state.remaining_ticks / 60
             bonus_info = f"BONUS: {self.engine.bonus_state.mode.value.replace('_', ' ').title()} ({remaining_secs:.1f}s)"
 
+        # Puzzle mode specific info
+        puzzle_info = []
+        if self.engine.puzzle_mode:
+            phase_display = self.engine.phase.value.title()
+            arrows_remaining = max(
+                0, self.engine.board.max_arrows - len(self.engine.board.arrows)
+            )
+            puzzle_info = [
+                f"Phase: {phase_display}",
+                f"Arrows: {len(self.engine.board.arrows)}/{self.engine.board.max_arrows}",
+                f"Remaining: {arrows_remaining}",
+            ]
+            if self.engine.phase == GamePhase.PLACEMENT:
+                puzzle_info.append("Press ENTER to start!")
+
         info_lines = [
             f"Step: {self.engine.current_step}",
             f"Timer: {timer_display}",
             f"Result: {self.engine.result.value}",
             f"Mode: {self.mode.value}",
             bonus_info if bonus_info else "",
-            "",
-            "Game Stats:",
         ]
+
+        # Add puzzle info if in puzzle mode
+        if puzzle_info:
+            info_lines.extend([""] + puzzle_info)
+
+        info_lines.extend(["", "Game Stats:"])
 
         stats = self.engine.get_game_stats()
         info_lines.extend(
@@ -532,6 +574,16 @@ class GameVisualizer:
             "Left Click - Place/Rotate Arrow",
             "Right Click - Remove Arrow",
         ]
+
+        # Add puzzle mode controls
+        if self.engine.puzzle_mode:
+            controls.extend(
+                [
+                    "",
+                    "Puzzle Mode:",
+                    "ENTER - Start Game",
+                ]
+            )
 
         for i, line in enumerate(controls):
             text = self.small_font.render(line, True, Colors.DARK_GRAY)

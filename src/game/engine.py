@@ -16,6 +16,11 @@ class GameResult(Enum):
     TIMEOUT = "timeout"
 
 
+class GamePhase(Enum):
+    PLACEMENT = "placement"  # Puzzle mode: placing arrows before start
+    RUNNING = "running"  # Game is running
+
+
 class GameEvent:
     def __init__(self, event_type: str, data: Dict[str, Any], step: int):
         self.event_type = event_type
@@ -39,6 +44,7 @@ class GameEngine:
         sprite_manager: SpriteManager,
         max_steps: int = 1000,
         seed: Optional[int] = None,
+        puzzle_mode: bool = False,
     ):
         self.board = board
         self.sprite_manager = sprite_manager
@@ -50,6 +56,11 @@ class GameEngine:
         self.result = GameResult.ONGOING
         self.step_callbacks: List[Callable[["GameEngine"], None]] = []
         self.bonus_state = BonusState()
+
+        # Puzzle mode support
+        self.puzzle_mode = puzzle_mode
+        self.phase = GamePhase.PLACEMENT if puzzle_mode else GamePhase.RUNNING
+        self.arrows_placed_in_placement = 0
 
         # Set random seed for deterministic gameplay
         self.seed = seed if seed is not None else random.randint(0, 2**31 - 1)
@@ -71,31 +82,35 @@ class GameEngine:
         self.events.append(event)
 
     def _check_win_condition(self) -> bool:
-        from .sprites import SpriteType
+        if not self.puzzle_mode:
+            return False
 
         mice = self.sprite_manager.get_sprites_by_type(SpriteType.MOUSE)
         if not mice:
             return True
 
-        active_mice = [mouse for mouse in mice if mouse.state == SpriteState.ACTIVE]
-        return len(active_mice) == 0
+        # In puzzle mode, win when all mice reach rockets (escaped)
+        escaped_mice = [mouse for mouse in mice if mouse.state == SpriteState.ESCAPED]
+        return len(escaped_mice) == len(mice)
 
     def _check_lose_condition(self) -> bool:
-        from .sprites import SpriteType
-
-        cats = self.sprite_manager.get_sprites_by_type(SpriteType.CAT)
-        mice = self.sprite_manager.get_sprites_by_type(SpriteType.MOUSE)
-
-        if not cats or not mice:
+        if not self.puzzle_mode:
             return False
 
-        captured_mice = [mouse for mouse in mice if mouse.state == SpriteState.CAPTURED]
-        total_mice = len(mice)
+        mice = self.sprite_manager.get_sprites_by_type(SpriteType.MOUSE)
+        if not mice:
+            return False
 
-        return len(captured_mice) > total_mice // 2
+        # In puzzle mode, lose if any mouse falls in hole or gets captured by cat
+        captured_mice = [mouse for mouse in mice if mouse.state == SpriteState.CAPTURED]
+        return len(captured_mice) > 0
 
     def place_arrow(self, x: int, y: int, direction: Direction) -> bool:
         if self.result != GameResult.ONGOING:
+            return False
+
+        # In puzzle mode, only allow arrow placement during placement phase
+        if self.puzzle_mode and self.phase == GamePhase.RUNNING:
             return False
 
         # Check if there are stationary sprites (spawners, rockets) at this position
@@ -106,8 +121,20 @@ class GameEngine:
             if sprite_type in [SpriteType.SPAWNER, SpriteType.ROCKET]:
                 return False
 
+        # In puzzle mode placement phase, check arrow budget
+        if (
+            self.puzzle_mode
+            and self.phase == GamePhase.PLACEMENT
+            and not self.board.has_arrow(x, y)
+            and len(self.board.arrows) >= self.board.max_arrows
+        ):
+            return False
+
         success = self.board.place_arrow(x, y, direction)
         if success:
+            if self.puzzle_mode and self.phase == GamePhase.PLACEMENT:
+                self.arrows_placed_in_placement += 1
+
             self._emit_event(
                 "arrow_placed", {"x": x, "y": y, "direction": direction.name}
             )
@@ -126,14 +153,35 @@ class GameEngine:
         if self.result != GameResult.ONGOING:
             return False
 
+        # In puzzle mode, only allow arrow removal during placement phase
+        if self.puzzle_mode and self.phase == GamePhase.RUNNING:
+            return False
+
         success = self.board.remove_arrow(x, y)
         if success:
             self._emit_event("arrow_removed", {"x": x, "y": y})
 
         return success
 
+    def start_game(self) -> bool:
+        """Start the game (transition from placement to running phase).
+
+        Returns:
+            bool: True if successfully started, False if not in placement phase
+        """
+        if not self.puzzle_mode or self.phase != GamePhase.PLACEMENT:
+            return False
+
+        self.phase = GamePhase.RUNNING
+        self._emit_event("game_started", {"arrows_placed": len(self.board.arrows)})
+        return True
+
     def step(self) -> Dict[str, Any]:
         if self.result != GameResult.ONGOING:
+            return self.get_step_result()
+
+        # In puzzle mode, don't advance game simulation during placement phase
+        if self.puzzle_mode and self.phase == GamePhase.PLACEMENT:
             return self.get_step_result()
 
         self.current_step += 1
@@ -194,6 +242,16 @@ class GameEngine:
                 "sprites_spawned", {"spawned_sprites": step_result["spawns"]}
             )
 
+        # Check win/lose conditions (only in puzzle mode)
+        if self.puzzle_mode:
+            if self._check_win_condition():
+                self.result = GameResult.SUCCESS
+                self._emit_event("game_won", {"step": self.current_step})
+            elif self._check_lose_condition():
+                self.result = GameResult.FAILURE
+                self._emit_event("game_lost", {"step": self.current_step})
+
+        # Check timeout condition (applies to all modes)
         if self.current_step >= self.max_steps:
             self.result = GameResult.TIMEOUT
             self._emit_event(
@@ -210,6 +268,8 @@ class GameEngine:
             "step": self.current_step,
             "tick": self.current_tick,
             "result": self.result.value,
+            "phase": self.phase.value,
+            "puzzle_mode": self.puzzle_mode,
             "board_state": self.get_board_state(),
             "sprite_states": self.get_sprite_states(),
             "game_stats": self.get_game_stats(),
@@ -295,6 +355,10 @@ class GameEngine:
         self.current_tick = 0
         self.events.clear()
         self.result = GameResult.ONGOING
+
+        # Reset puzzle mode state
+        self.phase = GamePhase.PLACEMENT if self.puzzle_mode else GamePhase.RUNNING
+        self.arrows_placed_in_placement = 0
 
         # Restore initial board and sprite state
         self.board = self.initial_board.copy()

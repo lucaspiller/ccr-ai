@@ -49,15 +49,20 @@ class Level:
         self.initial_arrows: Dict[Tuple[int, int], Direction] = {}
 
     def create_engine(
-        self, max_steps: int = 1000, seed: Optional[int] = None
+        self,
+        max_steps: int = 1000,
+        seed: Optional[int] = None,
+        puzzle_mode: bool = False,
     ) -> GameEngine:
         board_copy = self.board.copy()
         sprite_manager_copy = self.sprite_manager.copy()
 
-        for (x, y), direction in self.initial_arrows.items():
-            board_copy.place_arrow(x, y, direction)
+        # In puzzle mode, don't pre-place initial arrows - let user place them
+        if not puzzle_mode:
+            for (x, y), direction in self.initial_arrows.items():
+                board_copy.place_arrow(x, y, direction)
 
-        return GameEngine(board_copy, sprite_manager_copy, max_steps, seed)
+        return GameEngine(board_copy, sprite_manager_copy, max_steps, seed, puzzle_mode)
 
     def validate(self) -> List[str]:
         errors = []
