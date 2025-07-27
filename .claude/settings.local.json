@@ -10,7 +10,10 @@
       "Bash(rm:*)",
       "Bash(mkdir:*)",
       "Bash(uv sync:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(ls:*)",
+      "Bash(cut:*)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }

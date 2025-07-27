@@ -373,9 +373,13 @@ class GameEngine:
     def copy(self) -> "GameEngine":
         new_board = self.board.copy()
         new_sprite_manager = self.sprite_manager.copy()
-        new_engine = GameEngine(new_board, new_sprite_manager, self.max_steps)
+        new_engine = GameEngine(new_board, new_sprite_manager, self.max_steps, self.seed, self.puzzle_mode)
         new_engine.current_step = self.current_step
+        new_engine.current_tick = self.current_tick
         new_engine.result = self.result
+        new_engine.phase = self.phase
+        new_engine.arrows_placed_in_placement = self.arrows_placed_in_placement
+        new_engine.bonus_state = self.bonus_state
         return new_engine
 
     def get_valid_arrow_positions(self) -> List[Tuple[int, int]]:

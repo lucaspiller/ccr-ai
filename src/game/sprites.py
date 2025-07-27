@@ -222,7 +222,60 @@ class Sprite(ABC):
         return sprite
 
     def copy(self) -> "Sprite":
-        return self.from_dict(self.to_dict())
+        """Fast copy without JSON serialization."""
+        # Create new sprite of same type using current position
+        sprite_type = self.get_sprite_type()
+        
+        # Use globals() to avoid circular imports
+        
+        # Get class reference without circular import
+        if sprite_type.value == "mouse":
+            new_sprite = Mouse.__new__(Mouse)
+            Mouse.__init__(new_sprite, int(self.x), int(self.y), self.sprite_id)
+        elif sprite_type.value == "gold_mouse":
+            new_sprite = GoldMouse.__new__(GoldMouse)
+            GoldMouse.__init__(new_sprite, int(self.x), int(self.y), self.sprite_id)
+        elif sprite_type.value == "bonus_mouse":
+            new_sprite = BonusMouse.__new__(BonusMouse)
+            BonusMouse.__init__(new_sprite, int(self.x), int(self.y), self.sprite_id)
+        elif sprite_type.value == "cat":
+            new_sprite = Cat.__new__(Cat)
+            Cat.__init__(new_sprite, int(self.x), int(self.y), self.sprite_id)
+        elif sprite_type.value == "rocket":
+            new_sprite = Rocket.__new__(Rocket)
+            Rocket.__init__(new_sprite, int(self.x), int(self.y), self.sprite_id)
+        elif sprite_type.value == "spawner":
+            new_sprite = Spawner.__new__(Spawner)
+            Spawner.__init__(new_sprite, int(self.x), int(self.y), self.sprite_id)
+        else:
+            # Fallback to original method for unknown types
+            return self.from_dict(self.to_dict())
+        
+        # Copy all core fields directly
+        new_sprite.x = self.x
+        new_sprite.y = self.y
+        new_sprite.direction = self.direction
+        new_sprite.state = self.state
+        new_sprite.ticks_since_last_move = self.ticks_since_last_move
+        new_sprite.move_interval_ticks = self.move_interval_ticks
+        
+        # Copy movement tracking
+        if hasattr(self, 'movement_direction'):
+            new_sprite.movement_direction = self.movement_direction
+        
+        # Copy type-specific fields
+        if hasattr(self, 'mice_collected'):
+            new_sprite.mice_collected = self.mice_collected
+        if hasattr(self, 'spawn_interval_ticks'):
+            new_sprite.spawn_interval_ticks = self.spawn_interval_ticks
+        if hasattr(self, 'ticks_since_last_spawn'):
+            new_sprite.ticks_since_last_spawn = self.ticks_since_last_spawn
+        if hasattr(self, 'spawn_direction'):
+            new_sprite.spawn_direction = self.spawn_direction
+        if hasattr(self, 'spawn_count'):
+            new_sprite.spawn_count = self.spawn_count
+        
+        return new_sprite
 
     def __str__(self) -> str:
         return f"{self.get_sprite_type().value}({self.sprite_id}) at ({self.x:.1f}, {self.y:.1f}) tile ({self.tile_x}, {self.tile_y}) facing {self.direction.name}"
