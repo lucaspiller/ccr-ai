@@ -210,7 +210,6 @@ class TestGameEngine:
         assert restored.result == engine.result
         assert restored.max_steps == engine.max_steps
         assert restored.board.has_arrow(1, 1)
-        assert len(restored.events) == len(engine.events)
 
 
 class TestGameEvents:

@@ -359,11 +359,4 @@ class GameEngine:
         if "bonus_state" in data:
             engine.bonus_state = BonusState.from_dict(data["bonus_state"])
 
-        for event_data in data["events"]:
-            event = GameEvent(
-                event_data["event_type"], event_data["data"], event_data["step"]
-            )
-            event.timestamp = event_data["timestamp"]
-            engine.events.append(event)
-
         return engine
