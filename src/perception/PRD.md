@@ -45,7 +45,7 @@ The Perception layer converts raw ChuChu Rocket game state (from GameEngine.to_d
 
 ## 3. Output Format
 
-### 3.1 Grid Tensor: `torch.Tensor[28, height, width]`
+### 3.1 Raw Grid Tensor: `torch.Tensor[28, height, width]`
 
 | Channel | Name | Range | Description |
 |---------|------|-------|-------------|
@@ -62,7 +62,15 @@ The Perception layer converts raw ChuChu Rocket game state (from GameEngine.to_d
 | 26 | Gold Mouse | {0,1} | Gold mouse present |
 | 27 | Bonus Mouse | {0,1} | Bonus mouse present |
 
-### 3.2 Global Features: `torch.Tensor[16]`
+### 3.2 CNN-Encoded Grid: `torch.Tensor[grid_embedding_size]`
+
+The raw 28-channel grid tensor is processed through a CNN encoder:
+- **Input**: [28, height, width] raw grid tensor
+- **Architecture**: 4× Conv-BN-ReLU layers (28→32→64) + flatten
+- **Output**: Flattened grid embedding (~80K params)
+- **Purpose**: Captures local arrow-wall interactions, L-junctions, routing patterns
+
+### 3.3 Global Features: `torch.Tensor[16]`
 
 | Index | Feature | Type | Description |
 |-------|---------|------|-------------|
@@ -72,7 +80,7 @@ The Perception layer converts raw ChuChu Rocket game state (from GameEngine.to_d
 | 3-7 | Bonus State | one-hot | [None, Mouse Mania, Cat Mania, Speed Up, Slow Down] |
 | 8-15 | Player Scores | float | mice_collected[p0-p7] / 100 |
 
-### 3.3 Cat Set Encoding: `torch.Tensor[32]`
+### 3.4 Cat Set Encoding: `torch.Tensor[32]`
 
 Fixed-size embedding from variable cat list via set encoder:
 - Per-cat features: [x_norm, y_norm, dir_onehot(4), threat_features(2)]
@@ -104,7 +112,29 @@ class GridEncoder:
     def encode_special_mice(self, sprites: Dict, grid_shape: Tuple) -> torch.Tensor
 ```
 
-### 4.3 GlobalFeatureExtractor
+### 4.3 CNNEncoder (Neural Module)
+```python
+class CNNEncoder(nn.Module):
+    def __init__(self, input_channels: int = 28, board_width: int = 14, board_height: int = 10):
+        # 4× Conv-BN-ReLU layers: 28→32→64 + flatten
+        self.conv_layers = nn.Sequential(
+            # Conv block 1: 28→32 channels
+            nn.Conv2d(28, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            # Conv block 2: 32→64 channels  
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            # Additional layers as needed
+        )
+        
+    def forward(self, grid_tensor: torch.Tensor) -> torch.Tensor:
+        # Input: [batch, 28, height, width]
+        # Output: [batch, flattened_size] grid embedding
+```
+
+### 4.4 GlobalFeatureExtractor
 ```python
 class GlobalFeatureExtractor:
     def extract_timing_features(self, game_state: Dict) -> torch.Tensor
@@ -112,7 +142,7 @@ class GlobalFeatureExtractor:
     def extract_score_features(self, sprites: Dict) -> torch.Tensor
 ```
 
-### 4.4 CatSetEncoder  
+### 4.5 CatSetEncoder  
 ```python
 class CatSetEncoder(nn.Module):
     def __init__(self):
@@ -127,25 +157,27 @@ class CatSetEncoder(nn.Module):
         # Returns: [32] via max pooling
 ```
 
-### 4.5 PerceptionOutput
+### 4.6 PerceptionOutput
 ```python
 @dataclass  
 class PerceptionOutput:
-    grid_tensor: torch.Tensor      # [28, height, width]
+    grid_tensor: torch.Tensor      # [28, height, width] - raw grid 
+    grid_embedding: torch.Tensor   # [grid_embed_size] - CNN-encoded
     global_features: torch.Tensor  # [16]  
     cat_embedding: torch.Tensor    # [32]
     
     def get_combined_embedding(self) -> torch.Tensor:
-        """Flatten grid, concatenate with global + cat features"""
-        # Returns: [28*H*W + 16 + 32] for fusion MLP
+        """Concatenate CNN grid embedding with global + cat features"""
+        # Returns: [grid_embed_size + 16 + 32] for fusion MLP
 ```
 
 ## 5. Implementation Requirements
 
 ### 5.1 Core Modules
-- `src/perception/processors.py` - GameStateProcessor
+- `src/perception/processors.py` - GameStateProcessor with CNNEncoder
 - `src/perception/encoders.py` - GridEncoder, GlobalFeatureExtractor  
 - `src/perception/cat_encoder.py` - CatSetEncoder neural module
+- `src/perception/cnn_encoder.py` - CNNEncoder neural module 
 - `src/perception/data_types.py` - PerceptionOutput, constants
 - `src/perception/__init__.py` - Public API
 
@@ -166,6 +198,12 @@ class PerceptionOutput:
 #### Cat Threat Features
 1. `shrunk_arrow_ahead`: Check if tile in movement direction has damaged arrow
 2. `dist_to_enemy_rocket`: L1 distance to nearest non-player rocket / 20
+
+#### CNN Grid Processing
+1. Take raw 28-channel grid tensor [28, H, W]
+2. Apply Conv-BN-ReLU layers: 28→32→64 channels
+3. Flatten final feature maps to create grid embedding
+4. Concatenate with global features and cat embedding for fusion
 
 ### 5.3 Performance Requirements
 - Process game state in <1ms on CPU

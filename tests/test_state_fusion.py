@@ -127,6 +127,7 @@ class TestStateFusionProcessor:
         """Create a mock perception output for testing."""
         return PerceptionOutput(
             grid_tensor=torch.randn(28, 10, 14),
+            grid_embedding=torch.randn([35840]),
             global_features=torch.randn(16),
             cat_embedding=torch.randn(32),
             source_step=5,
@@ -198,18 +199,20 @@ class TestStateFusionProcessor:
 
         # Wrong grid tensor shape
         invalid_output = PerceptionOutput(
-            grid_tensor=torch.randn(28, 9, 14),  # Wrong height
+            grid_tensor=torch.randn(28, 25, 25),
+            grid_embedding=torch.randn([5]), # Wrong size
             global_features=torch.randn(16),
             cat_embedding=torch.randn(32),
             _validate_shapes=False,
         )
 
-        with pytest.raises(ValueError, match="Grid tensor shape mismatch"):
+        with pytest.raises(ValueError, match="Grid embedding shape mismatch"):
             processor.fuse(invalid_output)
 
         # Wrong global features shape
         invalid_output = PerceptionOutput(
             grid_tensor=torch.randn(28, 10, 14),
+            grid_embedding=torch.randn([35840]),
             global_features=torch.randn(15),  # Wrong size
             cat_embedding=torch.randn(32),
             _validate_shapes=False,
@@ -221,6 +224,7 @@ class TestStateFusionProcessor:
         # Wrong cat embedding shape
         invalid_output = PerceptionOutput(
             grid_tensor=torch.randn(28, 10, 14),
+            grid_embedding=torch.randn([35840]),
             global_features=torch.randn(16),
             cat_embedding=torch.randn(31),  # Wrong size
             _validate_shapes=False,
@@ -256,6 +260,7 @@ class TestStateFusionProcessor:
         # Cause a shape error
         invalid_output = PerceptionOutput(
             grid_tensor=torch.randn(28, 9, 14),
+            grid_embedding=torch.randn(0),
             global_features=torch.randn(16),
             cat_embedding=torch.randn(32),
             _validate_shapes=False,
@@ -309,6 +314,7 @@ class TestDifferentConfigurations:
         """Create a mock perception output for testing."""
         return PerceptionOutput(
             grid_tensor=torch.randn(28, 10, 14),
+            grid_embedding=torch.randn([35840]),
             global_features=torch.randn(16),
             cat_embedding=torch.randn(32),
         )

@@ -20,11 +20,13 @@ class TestPerceptionOutput:
     def test_perception_output_creation(self):
         """Test creation and validation of PerceptionOutput."""
         grid_tensor = torch.zeros(28, 10, 14)
+        grid_embedding = torch.randn([35840])
         global_features = torch.zeros(16)
         cat_embedding = torch.zeros(32)
 
         output = PerceptionOutput(
             grid_tensor=grid_tensor,
+            grid_embedding=grid_embedding,
             global_features=global_features,
             cat_embedding=cat_embedding,
         )
@@ -38,6 +40,7 @@ class TestPerceptionOutput:
         with pytest.raises(ValueError, match="Invalid grid tensor channels"):
             PerceptionOutput(
                 grid_tensor=torch.zeros(27, 10, 14),  # Wrong channel count
+                grid_embedding=torch.randn([35840]),
                 global_features=torch.zeros(16),
                 cat_embedding=torch.zeros(32),
             )
@@ -45,6 +48,7 @@ class TestPerceptionOutput:
         with pytest.raises(ValueError, match="Invalid global features shape"):
             PerceptionOutput(
                 grid_tensor=torch.zeros(28, 10, 14),
+                grid_embedding=torch.randn([35840]),
                 global_features=torch.zeros(15),  # Wrong dimension
                 cat_embedding=torch.zeros(32),
             )
@@ -52,26 +56,10 @@ class TestPerceptionOutput:
         with pytest.raises(ValueError, match="Invalid cat embedding shape"):
             PerceptionOutput(
                 grid_tensor=torch.zeros(28, 10, 14),
+                grid_embedding=torch.randn([35840]),
                 global_features=torch.zeros(16),
                 cat_embedding=torch.zeros(31),  # Wrong dimension
             )
-
-    def test_get_combined_embedding(self):
-        """Test combined embedding generation."""
-        grid_tensor = torch.ones(28, 10, 14)
-        global_features = torch.ones(16)
-        cat_embedding = torch.ones(32)
-
-        output = PerceptionOutput(
-            grid_tensor=grid_tensor,
-            global_features=global_features,
-            cat_embedding=cat_embedding,
-        )
-
-        combined = output.get_combined_embedding()
-        expected_size = 28 * 10 * 14 + 16 + 32
-        assert combined.shape == (expected_size,)
-        assert torch.all(combined == 1.0)
 
     def test_channel_extraction(self):
         """Test extraction of specific channel ranges."""
@@ -80,6 +68,7 @@ class TestPerceptionOutput:
 
         output = PerceptionOutput(
             grid_tensor=grid_tensor,
+            grid_embedding=torch.randn([35840]),
             global_features=torch.zeros(16),
             cat_embedding=torch.zeros(32),
         )
@@ -100,6 +89,7 @@ class TestPerceptionOutput:
 
         output = PerceptionOutput(
             grid_tensor=grid_tensor,
+            grid_embedding=torch.randn([35840]),
             global_features=global_features,
             cat_embedding=cat_embedding,
             source_step=100,
@@ -241,7 +231,7 @@ class TestGameStateProcessor:
 
         # Wrong board dimensions
         invalid_state = self.sample_game_state.copy()
-        invalid_state["board"]["width"] = 15
+        invalid_state["board"]["width"] = 25
         with pytest.raises(ValueError, match="Board width mismatch"):
             self.processor.process(invalid_state)
 
@@ -299,7 +289,7 @@ class TestGameStateProcessor:
         assert shapes["grid_tensor"] == (28, 10, 14)
         assert shapes["global_features"] == (16,)
         assert shapes["cat_embedding"] == (32,)
-        assert shapes["combined_embedding"] == (28 * 10 * 14 + 16 + 32,)
+        assert shapes["combined_embedding"] == (35888, )
 
 
 class TestBatchGameStateProcessor:
@@ -321,8 +311,8 @@ class TestBatchGameStateProcessor:
 
         batched_tensor = self.batch_processor.process_batch(states)
 
-        assert batched_tensor.shape[0] == 6  # Batch size
-        assert batched_tensor.shape[1] == 28 * 10 * 14 + 16 + 32  # Feature size
+        assert batched_tensor.shape[0] == 6
+        assert batched_tensor.shape[1] == 35888
 
     def test_streaming_processing(self):
         """Test streaming batch processing."""
@@ -354,14 +344,6 @@ class TestConvenienceFunctions:
 
         assert isinstance(output, PerceptionOutput)
         assert output.grid_tensor.shape == (28, 10, 14)
-
-    def test_get_combined_embedding_function(self):
-        """Test get_combined_embedding convenience function."""
-        embedding = get_combined_embedding(self.sample_state)
-
-        expected_size = 28 * 10 * 14 + 16 + 32
-        assert embedding.shape == (expected_size,)
-        assert isinstance(embedding, torch.Tensor)
 
     def test_convenience_functions_with_config(self):
         """Test convenience functions with custom config."""

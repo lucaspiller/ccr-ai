@@ -5,88 +5,8 @@ Tests for the policy head.
 import pytest
 import torch
 
-from src.policy.action_utils import (decode_action, encode_action,
-                                     get_erase_action, get_placement_actions,
-                                     get_tile_coords, get_tile_index,
-                                     validate_action_space)
-from src.policy.data_types import ActionInfo, PolicyConfig, PolicyOutput
-from src.policy.processors import (PolicyHead, PolicyProcessor,
-                                   create_action_mask, select_action_simple)
-
-
-class TestActionUtils:
-    """Test action encoding/decoding utilities."""
-
-    def test_tile_index_conversion(self):
-        """Test tile index to coordinates conversion."""
-        # Test corner cases
-        assert get_tile_index(0, 0) == 0
-        assert get_tile_index(9, 13) == 139
-        assert get_tile_index(5, 7) == 5 * 14 + 7
-
-        # Test reverse conversion
-        assert get_tile_coords(0) == (0, 0)
-        assert get_tile_coords(139) == (9, 13)
-        assert get_tile_coords(77) == (5, 7)
-
-    def test_tile_bounds_validation(self):
-        """Test tile coordinate bounds checking."""
-        # Valid coordinates
-        get_tile_index(0, 0)
-        get_tile_index(9, 13)
-
-        # Invalid coordinates
-        with pytest.raises(ValueError):
-            get_tile_index(-1, 0)
-        with pytest.raises(ValueError):
-            get_tile_index(10, 0)
-        with pytest.raises(ValueError):
-            get_tile_index(0, -1)
-        with pytest.raises(ValueError):
-            get_tile_index(0, 14)
-
-    def test_action_encoding_decoding(self):
-        """Test action encoding and decoding."""
-        test_cases = [
-            ("place_up", 0, 0, 0),
-            ("place_down", 0, 0, 140),
-            ("place_left", 0, 0, 280),
-            ("place_right", 0, 0, 420),
-            ("erase", 0, 0, 560),
-            ("place_up", 9, 13, 139),
-            ("place_down", 9, 13, 279),
-            ("erase", 5, 7, 637),  # 560 + 77
-        ]
-
-        for action_type, row, col, expected_idx in test_cases:
-            # Test encoding
-            action_idx = encode_action(action_type, row, col)
-            assert action_idx == expected_idx
-
-            # Test decoding
-            action_info = decode_action(action_idx)
-            assert action_info.action_type == action_type
-            assert action_info.tile_row == row
-            assert action_info.tile_col == col
-            assert action_info.action_idx == action_idx
-
-    def test_action_space_validation(self):
-        """Test complete action space validation."""
-        validate_action_space()
-
-    def test_placement_actions(self):
-        """Test getting placement actions for a tile."""
-        tile_idx = 77  # (5, 7)
-        placement_actions = get_placement_actions(tile_idx)
-
-        assert len(placement_actions) == 4
-        assert placement_actions == [77, 217, 357, 497]  # up, down, left, right
-
-    def test_erase_action(self):
-        """Test getting erase action for a tile."""
-        tile_idx = 77
-        erase_action = get_erase_action(tile_idx)
-        assert erase_action == 637  # 560 + 77
+from src.policy.data_types import PolicyConfig, PolicyOutput
+from src.policy.processors import PolicyHead, PolicyProcessor
 
 
 class TestPolicyConfig:
@@ -141,41 +61,6 @@ class TestPolicyConfig:
         # Invalid temperature
         with pytest.raises(ValueError):
             PolicyConfig(temperature=0)
-
-
-class TestActionInfo:
-    """Test ActionInfo data class."""
-
-    def test_valid_action_info(self):
-        """Test creating valid action info."""
-        action_info = ActionInfo(
-            action_type="place_up", tile_row=5, tile_col=7, tile_idx=77, action_idx=77
-        )
-        assert action_info.action_type == "place_up"
-        assert action_info.tile_row == 5
-        assert action_info.tile_col == 7
-        assert action_info.tile_idx == 77
-        assert action_info.action_idx == 77
-
-    def test_validation(self):
-        """Test action info validation."""
-        # Invalid action type
-        with pytest.raises(ValueError):
-            ActionInfo("invalid", 0, 0, 0, 0)
-
-        # Invalid coordinates
-        with pytest.raises(ValueError):
-            ActionInfo("place_up", -1, 0, 0, 0)
-        with pytest.raises(ValueError):
-            ActionInfo("place_up", 10, 0, 0, 0)
-        with pytest.raises(ValueError):
-            ActionInfo("place_up", 0, -1, 0, 0)
-        with pytest.raises(ValueError):
-            ActionInfo("place_up", 0, 14, 0, 0)
-
-        # Inconsistent tile_idx
-        with pytest.raises(ValueError):
-            ActionInfo("place_up", 5, 7, 100, 77)  # Wrong tile_idx
 
 
 class TestPolicyOutput:
@@ -407,33 +292,6 @@ class TestPolicyProcessor:
         assert processor.policy_head.training is False
 
 
-class TestConvenienceFunctions:
-    """Test convenience functions."""
-
-    def test_create_action_mask(self):
-        """Test action mask creation."""
-        valid_actions = [0, 1, 2, 100, 699]
-        mask = create_action_mask(valid_actions)
-
-        assert mask.shape == (700,)
-        assert mask[0] == 1.0
-        assert mask[1] == 1.0
-        assert mask[2] == 1.0
-        assert mask[100] == 1.0
-        assert mask[699] == 1.0
-        assert mask[3] == 0.0  # Not in valid actions
-
-    def test_select_action_simple(self):
-        """Test simple action selection function."""
-        embedding = torch.randn(128)
-        action_idx, action_info = select_action_simple(embedding)
-
-        assert isinstance(action_idx, int)
-        assert 0 <= action_idx < 700
-        assert isinstance(action_info, ActionInfo)
-        assert action_info.action_idx == action_idx
-
-
 class TestIntegration:
     """Test integration with other components."""
 
@@ -463,8 +321,8 @@ class TestIntegration:
             "place_right",
             "erase",
         ]
-        assert 0 <= action_info.tile_row < 10
-        assert 0 <= action_info.tile_col < 14
+        assert 0 <= action_info.y < 10
+        assert 0 <= action_info.x < 14
 
     def test_temperature_effects(self):
         """Test temperature effects on action selection."""

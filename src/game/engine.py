@@ -373,7 +373,9 @@ class GameEngine:
     def copy(self) -> "GameEngine":
         new_board = self.board.copy()
         new_sprite_manager = self.sprite_manager.copy()
-        new_engine = GameEngine(new_board, new_sprite_manager, self.max_steps, self.seed, self.puzzle_mode)
+        new_engine = GameEngine(
+            new_board, new_sprite_manager, self.max_steps, self.seed, self.puzzle_mode
+        )
         new_engine.current_step = self.current_step
         new_engine.current_tick = self.current_tick
         new_engine.result = self.result

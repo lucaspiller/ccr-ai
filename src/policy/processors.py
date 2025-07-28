@@ -9,8 +9,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .action_utils import decode_action
-from .data_types import ActionInfo, PolicyConfig, PolicyOutput
+from ..util.action_utils import (apply_action_mask, create_action_mask,
+                                 decode_action)
+from .data_types import PolicyConfig, PolicyOutput
 
 
 class PolicyHead(nn.Module):
@@ -24,6 +25,8 @@ class PolicyHead(nn.Module):
     def __init__(self, config: Optional[PolicyConfig] = None):
         super().__init__()
         self.config = config or PolicyConfig()
+
+        self.layerNorm = nn.LayerNorm(self.config.input_dim)
 
         # Build MLP layers
         self.layer1 = nn.Linear(
@@ -69,9 +72,12 @@ class PolicyHead(nn.Module):
         """
         x = fused_embedding
 
+        # Run LayerNorm
+        x = self.layerNorm(x)
+
         # First layer with ReLU
         x = self.layer1(x)
-        x = F.relu(x)
+        x = F.relu(x, inplace=False)  # Disable inplace for MPS compatibility
 
         # Optional dropout
         if self.dropout is not None:
@@ -273,6 +279,106 @@ class PolicyProcessor:
 
         return results
 
+    def forward_with_board_mask(
+        self,
+        fused_embedding: torch.Tensor,
+        board_w: int,
+        board_h: int,
+        temperature: Optional[float] = None,
+    ) -> torch.Tensor:
+        """
+        Forward pass with automatic board-size masking.
+
+        This method ensures policy and masking logic are always consistent
+        by using the same action encoding for both logits and masks.
+
+        Args:
+            fused_embedding: 128-dimensional fused state embedding [batch_size, 128] or [128]
+            board_w: Board width for mask generation
+            board_h: Board height for mask generation
+            temperature: Temperature for scaling (optional)
+
+        Returns:
+            Masked logits with invalid actions set to -inf
+        """
+        # Get raw logits from policy head
+        logits = self.policy_head(fused_embedding)
+
+        # Create board-size mask using centralized logic
+        action_mask = create_action_mask(board_w, board_h)
+
+        # Move mask to same device as logits
+        if logits.device != action_mask.device:
+            action_mask = action_mask.to(logits.device)
+
+        # Apply temperature if specified
+        if temperature is not None and temperature != 1.0:
+            logits = logits / temperature
+
+        # Apply mask to logits
+        masked_logits = apply_action_mask(logits, action_mask)
+
+        return masked_logits
+
+    def get_masked_probabilities(
+        self,
+        fused_embedding: torch.Tensor,
+        board_w: int,
+        board_h: int,
+        temperature: Optional[float] = None,
+    ) -> torch.Tensor:
+        """
+        Get action probabilities with board-size masking.
+
+        Args:
+            fused_embedding: 128-dimensional fused state embedding
+            board_w: Board width for mask generation
+            board_h: Board height for mask generation
+            temperature: Temperature for scaling (optional)
+
+        Returns:
+            Action probabilities with invalid actions zeroed out
+        """
+        masked_logits = self.forward_with_board_mask(
+            fused_embedding, board_w, board_h, temperature
+        )
+        return F.softmax(masked_logits, dim=-1)
+
+    def select_action_with_board_mask(
+        self,
+        fused_embedding: torch.Tensor,
+        board_w: int,
+        board_h: int,
+        strategy: str = "deterministic",
+        temperature: Optional[float] = None,
+        top_k: Optional[int] = None,
+    ) -> PolicyOutput:
+        """
+        Select action with automatic board-size masking.
+
+        Args:
+            fused_embedding: 128-dimensional fused state embedding
+            board_w: Board width for mask generation
+            board_h: Board height for mask generation
+            strategy: Selection strategy ("deterministic", "categorical", "top_k")
+            temperature: Temperature for softmax
+            top_k: Number of top actions for top-k sampling
+
+        Returns:
+            PolicyOutput with selected action guaranteed to be valid for board size
+        """
+        # Create board mask
+        action_mask = create_action_mask(board_w, board_h)
+
+        # Use existing select_action method with mask
+        return self.select_action(
+            fused_embedding,
+            strategy=strategy,
+            temperature=temperature,
+            top_k=top_k,
+            action_mask=action_mask,
+        )
+
     def _validate_input(self, fused_embedding: torch.Tensor) -> None:
         """Validate fused embedding input."""
         if fused_embedding.dim() not in [1, 2]:
@@ -350,37 +456,3 @@ class PolicyProcessor:
         """Set processor to evaluation mode."""
         self.policy_head.eval()
         return self
-
-
-# Convenience functions
-def create_action_mask(valid_actions: List[int]) -> torch.Tensor:
-    """
-    Create action mask from list of valid action indices.
-
-    Args:
-        valid_actions: List of valid action indices [0-699]
-
-    Returns:
-        Binary mask tensor with 1s for valid actions, 0s for invalid
-    """
-    mask = torch.zeros(700)
-    mask[valid_actions] = 1.0
-    return mask
-
-
-def select_action_simple(
-    fused_embedding: torch.Tensor, config: Optional[PolicyConfig] = None
-) -> Tuple[int, ActionInfo]:
-    """
-    Simple convenience function for action selection.
-
-    Args:
-        fused_embedding: 128-dimensional fused state embedding
-        config: Optional policy configuration
-
-    Returns:
-        Tuple of (action_index, action_info)
-    """
-    processor = PolicyProcessor(config)
-    policy_output = processor.select_action(fused_embedding)
-    return policy_output.selected_action, policy_output.action_info

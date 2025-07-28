@@ -7,6 +7,8 @@ from typing import Optional, Tuple
 
 import torch
 
+from ..util.action_utils import ActionInfo
+
 
 @dataclass
 class PolicyConfig:
@@ -52,51 +54,6 @@ class PolicyConfig:
 
         if self.temperature <= 0:
             raise ValueError("temperature must be positive")
-
-
-@dataclass
-class ActionInfo:
-    """
-    Structured information about a game action.
-
-    Attributes:
-        action_type: Type of action ("place_up", "place_down", "place_left", "place_right", "erase")
-        tile_row: Row coordinate of target tile (0-9)
-        tile_col: Column coordinate of target tile (0-13)
-        tile_idx: Linear tile index (0-139)
-        action_idx: Action index in the 700-dimensional space
-    """
-
-    action_type: str
-    tile_row: int
-    tile_col: int
-    tile_idx: int
-    action_idx: int
-
-    def __post_init__(self):
-        """Validate action information."""
-        valid_types = ["place_up", "place_down", "place_left", "place_right", "erase"]
-        if self.action_type not in valid_types:
-            raise ValueError(f"action_type must be one of: {valid_types}")
-
-        if not (0 <= self.tile_row <= 9):
-            raise ValueError("tile_row must be between 0 and 9")
-
-        if not (0 <= self.tile_col <= 13):
-            raise ValueError("tile_col must be between 0 and 13")
-
-        if not (0 <= self.tile_idx <= 139):
-            raise ValueError("tile_idx must be between 0 and 139")
-
-        if not (0 <= self.action_idx <= 699):
-            raise ValueError("action_idx must be between 0 and 699")
-
-        # Validate consistency
-        expected_tile_idx = self.tile_row * 14 + self.tile_col
-        if self.tile_idx != expected_tile_idx:
-            raise ValueError(
-                f"tile_idx {self.tile_idx} doesn't match coordinates ({self.tile_row}, {self.tile_col})"
-            )
 
 
 @dataclass
@@ -201,31 +158,3 @@ class PolicyOutput:
         return [
             (idx.item(), prob.item()) for idx, prob in zip(top_k_indices, top_k_values)
         ]
-
-
-# Constants for action space
-BOARD_HEIGHT = 10
-BOARD_WIDTH = 14
-TOTAL_TILES = BOARD_HEIGHT * BOARD_WIDTH  # 140
-TOTAL_ACTIONS = 700
-
-# Action type offsets in the 700-dimensional space
-ACTION_TYPE_OFFSETS = {
-    "place_up": 0,  # Actions 0-139
-    "place_down": 140,  # Actions 140-279
-    "place_left": 280,  # Actions 280-419
-    "place_right": 420,  # Actions 420-559
-    "erase": 560,  # Actions 560-699
-}
-
-# Reverse mapping for decoding
-OFFSET_TO_ACTION_TYPE = {v: k for k, v in ACTION_TYPE_OFFSETS.items()}
-
-# Validate action space dimensions
-assert TOTAL_TILES == 140, f"Expected 140 tiles, got {TOTAL_TILES}"
-assert (
-    TOTAL_ACTIONS == 560 + 140
-), f"Expected 700 actions (560 + 140), got {TOTAL_ACTIONS}"
-assert (
-    max(ACTION_TYPE_OFFSETS.values()) + TOTAL_TILES <= TOTAL_ACTIONS
-), "Action space overflow"

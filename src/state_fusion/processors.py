@@ -12,8 +12,8 @@ import torch.nn.functional as F
 from ..perception.data_types import PerceptionOutput
 from .data_types import (BOARD_HEIGHT, BOARD_WIDTH, CAT_EMBEDDING_DIM,
                          FUSION_INPUT_DIM, FUSION_OUTPUT_DIM,
-                         GLOBAL_FEATURES_DIM, GRID_TENSOR_CHANNELS,
-                         FusedStateOutput, FusionConfig)
+                         GLOBAL_FEATURES_DIM, GRID_EMBEDDING_DIM,
+                         GRID_TENSOR_CHANNELS, FusedStateOutput, FusionConfig)
 
 
 class FusionMLP(nn.Module):
@@ -36,7 +36,9 @@ class FusionMLP(nn.Module):
 
             # Add activation
             if config.activation == "relu":
-                layers.append(nn.ReLU(inplace=True))
+                layers.append(
+                    nn.ReLU(inplace=False)
+                )  # Disable inplace for MPS compatibility
             elif config.activation == "gelu":
                 layers.append(nn.GELU())
             elif config.activation == "tanh":
@@ -131,13 +133,13 @@ class StateFusionProcessor:
             # Validate input shapes
             self._validate_perception_output(perception_output)
 
-            # Flatten grid tensor
-            grid_flat = perception_output.grid_tensor.flatten()
+            # Use CNN-processed grid embedding instead of raw flattened grid
+            # No need to flatten since grid_embedding is already flattened from CNN
 
             # Concatenate all features
             fused_input = torch.cat(
                 [
-                    grid_flat,
+                    perception_output.grid_embedding,
                     perception_output.global_features,
                     perception_output.cat_embedding,
                 ]
@@ -207,12 +209,26 @@ class StateFusionProcessor:
         Raises:
             ValueError: If shapes are incorrect
         """
-        # Check grid tensor shape
-        expected_grid_shape = (GRID_TENSOR_CHANNELS, BOARD_HEIGHT, BOARD_WIDTH)
-        if perception_output.grid_tensor.shape != expected_grid_shape:
+        # Check grid tensor shape (raw) - channels should be 28
+        if perception_output.grid_tensor.shape[0] != GRID_TENSOR_CHANNELS:
             raise ValueError(
-                f"Grid tensor shape mismatch: expected {expected_grid_shape}, "
-                f"got {perception_output.grid_tensor.shape}"
+                f"Grid tensor channels mismatch: expected {GRID_TENSOR_CHANNELS}, "
+                f"got {perception_output.grid_tensor.shape[0]}"
+            )
+
+        # Check grid tensor has 3 dimensions
+        if perception_output.grid_tensor.dim() != 3:
+            raise ValueError(
+                f"Grid tensor should be 3D (channels, height, width), "
+                f"got {perception_output.grid_tensor.dim()}D"
+            )
+
+        # Check grid embedding shape (CNN-processed) - should be consistent max size
+        expected_grid_embed_shape = (GRID_EMBEDDING_DIM,)
+        if perception_output.grid_embedding.shape != expected_grid_embed_shape:
+            raise ValueError(
+                f"Grid embedding shape mismatch: expected {expected_grid_embed_shape}, "
+                f"got {perception_output.grid_embedding.shape}"
             )
 
         # Check global features shape

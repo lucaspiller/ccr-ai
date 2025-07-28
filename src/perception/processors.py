@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 import torch
 
 from .cat_encoder import CatSetProcessor
+from .cnn_encoder import CNNEncoder
 from .data_types import (GRID_HEIGHT, GRID_WIDTH, PerceptionConfig,
                          PerceptionMetrics, PerceptionOutput)
 from .encoders import GlobalFeatureExtractor, GridEncoder
@@ -19,6 +20,7 @@ class GameStateProcessor:
 
     Orchestrates all perception components:
     - GridEncoder: 28-channel spatial representation
+    - CNNEncoder: CNN processing of grid tensor to spatial embedding
     - GlobalFeatureExtractor: 16-dimensional game features
     - CatSetProcessor: 32-dimensional cat set embedding
 
@@ -37,6 +39,14 @@ class GameStateProcessor:
         # Initialize component processors
         self.grid_encoder = GridEncoder(
             width=self.config.board_width, height=self.config.board_height
+        )
+
+        # CNN encoder for processing grid tensor into spatial embeddings
+        # Always use maximum dimensions for consistent output size across variable boards
+        self.cnn_encoder = CNNEncoder(
+            input_channels=28,
+            board_width=GRID_WIDTH,  # Maximum: 14
+            board_height=GRID_HEIGHT,  # Maximum: 10
         )
 
         self.global_extractor = GlobalFeatureExtractor()
@@ -71,6 +81,14 @@ class GameStateProcessor:
 
             # Process each component
             grid_tensor = self.grid_encoder.encode(game_state)
+
+            # Move grid tensor to CNN encoder's device for processing
+            cnn_device = next(self.cnn_encoder.parameters()).device
+            grid_tensor_on_device = grid_tensor.to(cnn_device)
+            grid_embedding = self.cnn_encoder(
+                grid_tensor_on_device
+            )  # CNN process the grid
+
             global_features = self.global_extractor.extract(game_state)
             cat_embedding = self.cat_processor.process(game_state)
 
@@ -89,6 +107,7 @@ class GameStateProcessor:
             # Create structured output
             output = PerceptionOutput(
                 grid_tensor=grid_tensor,
+                grid_embedding=grid_embedding,
                 global_features=global_features,
                 cat_embedding=cat_embedding,
                 source_step=source_step,
@@ -185,15 +204,25 @@ class GameStateProcessor:
         self._profiling_enabled = False
         self.config.enable_profiling = False
 
+    def get_trainable_parameters(self):
+        """Get trainable parameters from CNN encoder."""
+        return self.cnn_encoder.parameters()
+
+    def get_cnn_encoder(self) -> CNNEncoder:
+        """Get the CNN encoder for external training setup."""
+        return self.cnn_encoder
+
     def get_output_shapes(self) -> Dict[str, tuple]:
         """Get expected output tensor shapes."""
+        grid_embed_size = self.cnn_encoder.get_output_size(
+            self.config.board_height, self.config.board_width
+        )
         return {
             "grid_tensor": (28, self.config.board_height, self.config.board_width),
+            "grid_embedding": (grid_embed_size,),
             "global_features": (16,),
             "cat_embedding": (32,),
-            "combined_embedding": (
-                28 * self.config.board_height * self.config.board_width + 16 + 32,
-            ),
+            "combined_embedding": (grid_embed_size + 16 + 32,),
         }
 
     def benchmark(

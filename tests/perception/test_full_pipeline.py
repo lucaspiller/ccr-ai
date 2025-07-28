@@ -101,7 +101,7 @@ class TestFullPerceptionPipeline:
         combined = output.get_combined_embedding()
 
         # Check shape
-        expected_size = 28 * 10 * 14 + 16 + 32
+    expected_size = 256 * 14 * 10 + 16 + 32 # 256 channels, 14 width, 10 height + 16 + 32
         assert combined.shape == (expected_size,)
 
         # Should have reasonable number of non-zero values

@@ -67,12 +67,14 @@ class PerceptionOutput:
     Structured output from perception layer processing.
 
     Contains all tensor representations needed for the neural network:
-    - Grid tensor: 28-channel spatial representation
+    - Grid tensor: 28-channel spatial representation (raw)
+    - Grid embedding: CNN-processed spatial features (flattened)
     - Global features: 16-dimensional game state vector
     - Cat embedding: 32-dimensional set encoding of cats
     """
 
-    grid_tensor: torch.Tensor  # [28, height, width]
+    grid_tensor: torch.Tensor  # [28, height, width] - raw grid
+    grid_embedding: torch.Tensor  # [grid_embed_size] - CNN-processed
     global_features: torch.Tensor  # [16]
     cat_embedding: torch.Tensor  # [32]
 
@@ -120,17 +122,14 @@ class PerceptionOutput:
 
     def get_combined_embedding(self) -> torch.Tensor:
         """
-        Flatten and concatenate all perception outputs for fusion MLP.
+        Concatenate CNN grid embedding with global and cat features for fusion MLP.
 
         Returns:
-            torch.Tensor: [28*H*W + 16 + 32] flattened feature vector
+            torch.Tensor: [grid_embed_size + 16 + 32] feature vector
         """
-        # Flatten grid tensor while preserving spatial structure information
-        flattened_grid = self.grid_tensor.flatten()  # [28*H*W]
-
-        # Concatenate all components
+        # Use CNN-processed grid embedding instead of raw flattened grid
         combined = torch.cat(
-            [flattened_grid, self.global_features, self.cat_embedding], dim=0
+            [self.grid_embedding, self.global_features, self.cat_embedding], dim=0
         )
 
         return combined
@@ -179,6 +178,7 @@ class PerceptionOutput:
         """Convert to dictionary for serialization/debugging."""
         return {
             "grid_tensor": self.grid_tensor.tolist(),
+            "grid_embedding": self.grid_embedding.tolist(),
             "global_features": self.global_features.tolist(),
             "cat_embedding": self.cat_embedding.tolist(),
             "source_step": self.source_step,
@@ -193,6 +193,7 @@ class PerceptionOutput:
         """Create from dictionary."""
         return cls(
             grid_tensor=torch.tensor(data["grid_tensor"], dtype=torch.float32),
+            grid_embedding=torch.tensor(data["grid_embedding"], dtype=torch.float32),
             global_features=torch.tensor(data["global_features"], dtype=torch.float32),
             cat_embedding=torch.tensor(data["cat_embedding"], dtype=torch.float32),
             source_step=data.get("source_step"),
@@ -204,11 +205,13 @@ class PerceptionOutput:
     def summary(self) -> str:
         """Generate human-readable summary of perception output."""
         non_zero_channels = (self.grid_tensor.sum(dim=(1, 2)) > 0).sum().item()
+        non_zero_grid_embed = (self.grid_embedding != 0).sum().item()
         non_zero_global = (self.global_features > 0).sum().item()
         non_zero_cat = (self.cat_embedding != 0).sum().item()
 
         summary = f"""Perception Output Summary:
   Grid Tensor: {self.grid_tensor.shape} ({non_zero_channels}/{GRID_CHANNELS} channels active)
+  Grid Embedding: {self.grid_embedding.shape} ({non_zero_grid_embed} non-zero CNN features)
   Global Features: {self.global_features.shape} ({non_zero_global}/{GLOBAL_FEATURES_DIM} non-zero)
   Cat Embedding: {self.cat_embedding.shape} ({non_zero_cat}/{CAT_EMBEDDING_DIM} non-zero)
   Total Features: {self.total_features:,}
@@ -222,6 +225,20 @@ class PerceptionOutput:
             summary += f"\n  Source Step: {self.source_step}"
 
         return summary
+
+    def to(self, device: torch.device) -> "PerceptionOutput":
+        """Move all tensors to specified device."""
+        return PerceptionOutput(
+            grid_tensor=self.grid_tensor.to(device),
+            grid_embedding=self.grid_embedding.to(device),
+            global_features=self.global_features.to(device),
+            cat_embedding=self.cat_embedding.to(device),
+            source_step=self.source_step,
+            source_tick=self.source_tick,
+            cat_count=self.cat_count,
+            encoding_time_ms=self.encoding_time_ms,
+            _validate_shapes=False,  # Skip validation after device move
+        )
 
 
 @dataclass

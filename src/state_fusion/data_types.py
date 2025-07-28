@@ -102,13 +102,12 @@ BOARD_WIDTH = 14
 GLOBAL_FEATURES_DIM = 16
 CAT_EMBEDDING_DIM = 32
 
-# Calculated input dimension for fusion MLP
-FUSION_INPUT_DIM = (
-    (GRID_TENSOR_CHANNELS * BOARD_HEIGHT * BOARD_WIDTH)
-    + GLOBAL_FEATURES_DIM
-    + CAT_EMBEDDING_DIM
-)
+# CNN grid embedding dimensions (256 channels × board dimensions)
+GRID_EMBEDDING_DIM = 256 * BOARD_HEIGHT * BOARD_WIDTH  # 256 * 10 * 14 = 35840
+
+# Calculated input dimension for fusion MLP (using CNN embedding instead of raw grid)
+FUSION_INPUT_DIM = GRID_EMBEDDING_DIM + GLOBAL_FEATURES_DIM + CAT_EMBEDDING_DIM
 FUSION_OUTPUT_DIM = 128
 
-# Expected dimension: 28 * 10 * 14 + 16 + 32 = 3920 + 48 = 3968
-assert FUSION_INPUT_DIM == 3968, f"Expected 3968 input dims, got {FUSION_INPUT_DIM}"
+# Expected dimension: 35840 + 16 + 32 = 35888
+assert FUSION_INPUT_DIM == 35888, f"Expected 35888 input dims, got {FUSION_INPUT_DIM}"

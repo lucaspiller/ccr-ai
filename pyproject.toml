@@ -5,9 +5,13 @@ description = "CcrAI - Self-learning agent for ChuChu Rocket"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "matplotlib>=3.10.3",
     "numpy>=1.24.0",
     "pygame>=2.5.0",
+    "pytest>=8.4.1",
+    "scikit-learn>=1.7.1",
     "torch>=2.0.0",
+    "tqdm>=4.67.1",
 ]
 
 [project.optional-dependencies]
@@ -16,4 +20,10 @@ dev = [
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "isort>=5.12.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "isort>=6.0.1",
 ]
