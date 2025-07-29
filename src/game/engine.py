@@ -47,6 +47,7 @@ class GameEngine:
         puzzle_mode: bool = False,
     ):
         self.board = board
+        # Use get_game_stats instead of accessing the sprite manager directly outside the engine
         self.sprite_manager = sprite_manager
         self.movement_engine = MovementEngine(board, sprite_manager)
         self.max_steps = max_steps
@@ -313,11 +314,16 @@ class GameEngine:
             "active": len([m for m in mice if m.state == SpriteState.ACTIVE]),
             "captured": len([m for m in mice if m.state == SpriteState.CAPTURED]),
             "escaped": len([m for m in mice if m.state == SpriteState.ESCAPED]),
+            "in_rocket": len([m for m in mice if m.state == SpriteState.ESCAPED]),
+            "in_holes": len([m for m in mice if m.state == SpriteState.CAPTURED]),
         }
 
         cat_stats = {
             "total": len(cats),
             "active": len([c for c in cats if c.state == SpriteState.ACTIVE]),
+            "captured": len([c for c in cats if c.state == SpriteState.CAPTURED]),
+            "escaped": len([c for c in cats if c.state == SpriteState.ESCAPED]),
+            "in_rocket": len([c for c in cats if c.state == SpriteState.ESCAPED]),
         }
 
         rocket_stats = {
@@ -325,11 +331,15 @@ class GameEngine:
             "mice_collected": sum(r.mice_collected for r in rockets),
         }
 
+        arrow_stats = {
+            "arrows_placed": len(self.board.arrows),
+        }
+
         return {
             "mice": mice_stats,
             "cats": cat_stats,
             "rockets": rocket_stats,
-            "arrows_placed": len(self.board.arrows),
+            "arrows": arrow_stats,
         }
 
     def run_simulation(self, max_steps: Optional[int] = None) -> Dict[str, Any]:

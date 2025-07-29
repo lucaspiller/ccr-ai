@@ -136,12 +136,20 @@ class StateFusionProcessor:
             # Use CNN-processed grid embedding instead of raw flattened grid
             # No need to flatten since grid_embedding is already flattened from CNN
 
+            # Get device from fusion MLP parameters
+            device = next(self.fusion_mlp.parameters()).device
+
+            # Ensure all tensors are on the same device before concatenation
+            grid_embedding = perception_output.grid_embedding.to(device)
+            global_features = perception_output.global_features.to(device)
+            cat_embedding = perception_output.cat_embedding.to(device)
+
             # Concatenate all features
             fused_input = torch.cat(
                 [
-                    perception_output.grid_embedding,
-                    perception_output.global_features,
-                    perception_output.cat_embedding,
+                    grid_embedding,
+                    global_features,
+                    cat_embedding,
                 ]
             )
 

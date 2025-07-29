@@ -12,11 +12,11 @@ class PPOConfig:
 
     # Data parameters
     bc_model_path: str = "model/bc_final.pth"
-    eval_puzzles_path: str = "data/eval_puzzles.csv"  # Fixed held-out test set
 
     # Environment parameters
     num_parallel_envs: int = 16
-    episode_timeout: int = 200
+    placement_timeout: int = 10  # Max steps for placement phase
+    execution_timeout: int = 1800  # Max ticks for execution phase (30 seconds at 60fps)
     early_terminate_on_success: bool = True  # Terminate when all mice scored
 
     # PPO Algorithm parameters
@@ -114,5 +114,7 @@ class PPOConfig:
 
         if self.num_parallel_envs <= 0:
             raise ValueError("num_parallel_envs must be positive")
-        if self.episode_timeout <= 0:
-            raise ValueError("episode_timeout must be positive")
+        if self.placement_timeout <= 0:
+            raise ValueError("placement_timeout must be positive")
+        if self.execution_timeout <= 0:
+            raise ValueError("execution_timeout must be positive")

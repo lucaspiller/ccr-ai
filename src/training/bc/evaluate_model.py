@@ -5,19 +5,15 @@ Script to evaluate BC-trained model solve rate on test puzzles.
 
 import argparse
 import random
-from pathlib import Path
-import numpy as np
 
+import numpy as np
 import torch
 
-from ...perception.data_types import PerceptionConfig
-from ...perception.processors import GameStateProcessor
-from ...policy.processors import PolicyProcessor
-from ...state_fusion.processors import StateFusionProcessor
+from src.model.model_loader import ModelLoader
+
 from .config import BCConfig
 from .data_loader import create_data_loaders, load_puzzles_from_csv
 from .evaluator import BCEvaluator
-from .model_manager import ModelManager
 
 
 def main():
@@ -51,12 +47,12 @@ def main():
     random.seed(42)
     np.random.seed(42)
     torch.manual_seed(42)
-    
+
     # Additional deterministic settings
     if torch.cuda.is_available():
         torch.cuda.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-    
+
     # Make operations deterministic
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -66,18 +62,6 @@ def main():
     # Load configuration
     config = BCConfig()
     config.csv_path = args.csv_path
-    config.device = args.device
-
-    # Set device for evaluation
-    if args.device == "auto":
-        device = (
-            "mps"
-            if torch.backends.mps.is_available()
-            else "cuda" if torch.cuda.is_available() else "cpu"
-        )
-    else:
-        device = args.device
-    print(f"Using device: {device}")
 
     print(f"Loading puzzles from {args.csv_path}")
     puzzles = load_puzzles_from_csv(args.csv_path)
@@ -89,13 +73,12 @@ def main():
     max_height = max(p["board_h"] for p in puzzles)
     print(f"Max board dimensions: {max_width}×{max_height}")
 
-    # Initialize processors with validation disabled for variable board sizes
-    perception_config = PerceptionConfig()
-    perception_config.strict_bounds_checking = False
-    perception_config.validate_input = False
-    perception_processor = GameStateProcessor(perception_config)
-    state_fusion_processor = StateFusionProcessor()
-    policy_processor = PolicyProcessor()
+    # Load model
+    model_loader = ModelLoader(args.model_path, args.device)
+    (perception_processor, state_fusion_processor, policy_processor, value_head) = (
+        model_loader.get_components()
+    )
+    config.device = model_loader.device
 
     # Create data loaders to get test split
     train_loader, val_loader, test_loader = create_data_loaders(
@@ -105,43 +88,6 @@ def main():
     # For evaluation, use all loaded puzzles (they're already evaluation puzzles)
     test_puzzles = puzzles
     print(f"Evaluating on {len(test_puzzles)} test puzzles")
-
-    # Load model
-    model_manager = ModelManager(config)
-    print(f"Loading model from {args.model_path}")
-
-    if Path(args.model_path).exists():
-        checkpoint = torch.load(
-            args.model_path, map_location=device, weights_only=False
-        )
-        model_state = checkpoint["model_state_dict"]
-
-        # Check if this is the new composite format or old format
-        if isinstance(model_state, dict) and "cnn_encoder" in model_state:
-            # New composite format - load all components
-            perception_processor.get_cnn_encoder().load_state_dict(
-                model_state["cnn_encoder"]
-            )
-            state_fusion_processor.fusion_mlp.load_state_dict(
-                model_state["state_fusion"]
-            )
-            policy_processor.policy_head.load_state_dict(model_state["policy_head"])
-            print("Model loaded successfully (composite format)")
-        else:
-            # Legacy format - only policy head was saved
-            policy_processor.policy_head.load_state_dict(model_state)
-            print(
-                "Model loaded successfully (legacy format - CNN/fusion layers randomly initialized)"
-            )
-
-        print(f"Loaded from epoch {checkpoint.get('epoch', 'unknown')}")
-    else:
-        print(f"Warning: Model file {args.model_path} not found")
-        print("Using randomly initialized model")
-
-    # Move models to device
-    state_fusion_processor = state_fusion_processor.to(device)
-    policy_processor = policy_processor.to(device)
 
     # Initialize evaluator
     evaluator = BCEvaluator(
