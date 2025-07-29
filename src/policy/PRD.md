@@ -1,12 +1,13 @@
-# Policy Head PRD
+# Policy & Value Head PRD
 
 ## 1. Overview
 
-The Policy Head is the decision-making component of our ChuChu Rocket AI architecture. It takes the 128-dimensional fused state embedding and outputs a probability distribution over all possible game actions, enabling the agent to decide where and what to place on each tick.
+The Policy and Value Heads form the dual-output decision-making component of our ChuChu Rocket AI architecture. Both heads consume the same 128-dimensional fused state embedding to produce complementary outputs for reinforcement learning.
 
-**Input**: 128-dimensional fused embedding from state-fusion layer  
-**Output**: 700-dimensional action probability distribution (softmax)  
-**Role**: Action selection and decision-making for optimal tile placement
+**Shared Input**: 128-dimensional fused embedding from state-fusion layer  
+**Policy Output**: 700-dimensional action probability distribution (softmax)  
+**Value Output**: Single scalar value estimate for current state  
+**Role**: Action selection (policy) and state evaluation (value) for PPO training
 
 ## 2. Action Space Design
 
@@ -37,17 +38,30 @@ Total Actions: 700
 
 ## 3. Architecture Requirements
 
-### 3.1 Network Design
+### 3.1 Policy Head Network Design
 According to AI overview specification:
 - **Layer 1**: 128 → 256 (Linear + ReLU)
 - **Layer 2**: 256 → 700 (Linear + Softmax)
 - **Parameter Count**: ~40K parameters
 - **Activation**: ReLU for hidden layers, Softmax for output
 
-### 3.2 Output Specifications
+### 3.2 Value Head Network Design
+According to AI overview specification:
+- **Layer 1**: 128 → 64 (Linear + ReLU)
+- **Layer 2**: 64 → 1 (Linear)
+- **Parameter Count**: ~8K parameters
+- **Activation**: ReLU for hidden layer, no activation for scalar output
+
+### 3.3 Output Specifications
+#### Policy Head
 - **Shape**: (700,) probability distribution
 - **Range**: [0, 1] with sum = 1.0
 - **Semantics**: P(action | state) for each possible action
+
+#### Value Head
+- **Shape**: (1,) scalar value
+- **Range**: Unbounded real number
+- **Semantics**: Expected cumulative reward from current state
 
 ## 4. Technical Design
 
@@ -63,12 +77,32 @@ class PolicyHead(nn.Module):
     
     def forward(self, fused_embedding: torch.Tensor) -> torch.Tensor:
         # Returns action logits before softmax
-    
-    def get_action_probabilities(self, fused_embedding: torch.Tensor) -> torch.Tensor:
-        # Returns softmax probabilities
 ```
 
-#### PolicyConfig
+#### ValueHead (nn.Module)
+```python
+class ValueHead(nn.Module):
+    def __init__(self, config: ValueConfig):
+        # 128 → 64 → 1 MLP
+        # ReLU activation for hidden layer
+        # No activation for output
+    
+    def forward(self, fused_embedding: torch.Tensor) -> torch.Tensor:
+        # Returns scalar value estimate
+```
+
+#### PolicyProcessor (nn.Module)
+```python
+class PolicyProcessor(nn.Module):
+    def __init__(self, policy_config: PolicyConfig, value_config: ValueConfig):
+        self.policy_head = PolicyHead(policy_config)
+        self.value_head = ValueHead(value_config)
+    
+    def forward(self, fused_embedding: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Returns (action_logits, value_estimate)
+```
+
+#### PolicyConfig & ValueConfig
 ```python
 @dataclass
 class PolicyConfig:
@@ -78,14 +112,23 @@ class PolicyConfig:
     dropout_rate: float = 0.1
     use_bias: bool = True
     weight_init: str = "xavier"
+
+@dataclass
+class ValueConfig:
+    input_dim: int = 128
+    hidden_dim: int = 64
+    output_dim: int = 1
+    use_bias: bool = True
+    weight_init: str = "xavier"
 ```
 
-#### PolicyOutput
+#### PolicyValueOutput
 ```python
 @dataclass
-class PolicyOutput:
+class PolicyValueOutput:
     action_logits: torch.Tensor      # Raw logits [700]
     action_probs: torch.Tensor       # Softmax probabilities [700]
+    value_estimate: torch.Tensor     # State value [1]
     selected_action: Optional[int]   # Sampled/selected action index
     action_type: Optional[str]       # "place_up", "place_down", "place_left", "place_right", "erase"
     target_tile: Optional[Tuple[int, int]]  # (row, col) for action
@@ -111,26 +154,29 @@ class PolicyOutput:
 - Handles both single inference and batch training modes
 
 ### 5.2 Output Interface
-- Provides action probabilities for action selection
-- Supplies logits for policy gradient training (PPO)
+- **PolicyProcessor**: Returns unified (logits, value) tuple
+- **Policy Head**: Provides action probabilities for action selection and logits for PPO
+- **Value Head**: Supplies state value estimates for advantage calculation
 - Supports action masking via planner integration
 
 ### 5.3 Training Integration
-- **Behavior Cloning**: Supervised learning from optimal action labels
-- **PPO Training**: Policy gradient updates using advantage estimates
-- **Action Masking**: Integration with rule-based planner for safety
+- **Behavior Cloning**: Policy head trained on optimal action labels (value head optional)
+- **PPO Training**: Both heads trained jointly using policy gradients and value function loss
+- **Advantage Calculation**: Value head predictions used for GAE computation
+- **Parameter Groups**: Both heads can share optimizer settings or use different learning rates
 
 ## 6. Performance Requirements
 
 ### 6.1 Latency Targets
-- **Forward Pass**: < 0.05ms on target hardware
+- **Combined Forward Pass**: < 0.06ms on target hardware (both heads)
 - **Batch Processing**: > 1000 decisions/second
-- **Memory Usage**: < 10MB for inference
+- **Memory Usage**: < 15MB for inference (includes value head)
 
 ### 6.2 Quality Metrics
-- **Action Accuracy**: Match expert demonstrations (>95% on simple puzzles)
+- **Policy Accuracy**: Match expert demonstrations (>95% on simple puzzles)
+- **Value Accuracy**: Low MSE on return predictions during PPO
 - **Exploration Balance**: Maintain entropy for learning
-- **Convergence Speed**: Fast policy gradient updates
+- **Convergence Speed**: Fast joint training of both heads
 
 ## 7. Configuration Options
 

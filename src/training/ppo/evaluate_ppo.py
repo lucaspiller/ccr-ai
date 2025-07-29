@@ -17,6 +17,7 @@ from src.training.ppo.config import PPOConfig
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 
 from src.model.model_loader import ModelLoader
+
 from .ppo_evaluator import PPOEvaluator
 
 
@@ -36,11 +37,12 @@ class PPOModelEvaluator:
             self.state_fusion_processor,
             self.policy_processor,
             self.value_head,
-        ) = model_loader.get_components()
+        ) = model_loader.get_ppo_components()
         self.device = model_loader.device
         self.parameter_count = model_loader.parameter_count
 
         self.config = PPOConfig()  # Load default PPO config
+        self.config.verbose_env_logging = True
 
         print(f"PPO Model Evaluator initialized")
         print(f"Model: {model_path}")

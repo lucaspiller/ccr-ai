@@ -4,9 +4,9 @@ Integration tests for puzzle mode functionality.
 
 import pytest
 
-from src.game.board import Direction, CellType
+from src.game.board import CellType, Direction
 from src.game.board_builder import BoardBuilder, BoardConfig
-from src.game.engine import GameEngine, GameResult, GamePhase
+from src.game.engine import GameEngine, GamePhase, GameResult
 from src.game.levels import LevelBuilder
 
 
@@ -100,7 +100,9 @@ class TestPuzzleMode:
 
         for (x, y), direction in winning_arrows:
             success = engine.place_arrow(x, y, direction)
-            assert success, f"Failed to place arrow at ({x}, {y}) with direction {direction}"
+            assert (
+                success
+            ), f"Failed to place arrow at ({x}, {y}) with direction {direction}"
 
         # Start the game
         assert engine.start_game() is True
@@ -113,15 +115,19 @@ class TestPuzzleMode:
             step_count += 1
 
         # Verify win condition
-        assert engine.result == GameResult.SUCCESS, f"Expected SUCCESS but got {engine.result} after {step_count} steps"
+        assert (
+            engine.result == GameResult.SUCCESS
+        ), f"Expected SUCCESS but got {engine.result} after {step_count} steps"
 
         # Verify all mice escaped (reached rockets)
-        from src.game.sprites import SpriteType, SpriteState
+        from src.game.sprites import SpriteState, SpriteType
 
         mice = engine.sprite_manager.get_sprites_by_type(SpriteType.MOUSE)
         escaped_mice = [mouse for mouse in mice if mouse.state == SpriteState.ESCAPED]
-        
-        assert len(escaped_mice) == len(mice), f"Expected all {len(mice)} mice to escape, but only {len(escaped_mice)} escaped"
+
+        assert len(escaped_mice) == len(
+            mice
+        ), f"Expected all {len(mice)} mice to escape, but only {len(escaped_mice)} escaped"
 
     def test_puzzle_mode_lose_condition(self):
         """Test that puzzle mode loses when mice get captured."""
@@ -152,4 +158,8 @@ class TestPuzzleMode:
 
         # The result should be either FAILURE (mice captured) or potentially SUCCESS if mice got lucky
         # In puzzle mode, any mouse getting captured should result in failure
-        assert engine.result in [GameResult.FAILURE, GameResult.SUCCESS, GameResult.TIMEOUT]
+        assert engine.result in [
+            GameResult.FAILURE,
+            GameResult.SUCCESS,
+            GameResult.TIMEOUT,
+        ]

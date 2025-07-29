@@ -7,8 +7,7 @@ import torch
 
 from src.perception.data_types import PerceptionOutput
 from src.state_fusion.data_types import FusedStateOutput, FusionConfig
-from src.state_fusion.processors import (StateFusionProcessor,
-                                         fuse_perception_output)
+from src.state_fusion.processors import StateFusionProcessor, fuse_perception_output
 
 
 class TestFusionConfig:
@@ -200,7 +199,7 @@ class TestStateFusionProcessor:
         # Wrong grid tensor shape
         invalid_output = PerceptionOutput(
             grid_tensor=torch.randn(28, 25, 25),
-            grid_embedding=torch.randn([5]), # Wrong size
+            grid_embedding=torch.randn([5]),  # Wrong size
             global_features=torch.randn(16),
             cat_embedding=torch.randn(32),
             _validate_shapes=False,

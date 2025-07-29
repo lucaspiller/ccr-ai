@@ -75,8 +75,8 @@ def main():
 
     # Load model
     model_loader = ModelLoader(args.model_path, args.device)
-    (perception_processor, state_fusion_processor, policy_processor, value_head) = (
-        model_loader.get_components()
+    (perception_processor, state_fusion_processor, policy_processor) = (
+        model_loader.get_bc_components()
     )
     config.device = model_loader.device
 

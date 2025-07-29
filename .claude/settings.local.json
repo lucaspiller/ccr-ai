@@ -15,7 +15,8 @@
       "Bash(cut:*)",
       "Bash(chmod:*)",
       "Bash(pip install:*)",
-      "Bash(uv add:*)"
+      "Bash(uv add:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

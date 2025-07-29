@@ -4,8 +4,8 @@ Tests for the BFS solver.
 
 import pytest
 
+from src.bfs_solver.difficulty import DifficultyLabel, DifficultyScorer
 from src.bfs_solver.solver import BFSSolver
-from src.bfs_solver.difficulty import DifficultyScorer, DifficultyLabel
 from src.game.board import Direction
 from src.game.board_builder import BoardBuilder, BoardConfig
 
@@ -32,10 +32,10 @@ class TestBFSSolver:
 
         # Create BFS solver
         solver = BFSSolver(depth_cap=10, timeout_ms=1000)  # Generous limits for test
-        
+
         # Solve the puzzle
         result = solver.solve(engine)
-        
+
         # Verify solution was found
         assert result.success is True
         assert result.solution == [((0, 2), Direction.UP), ((6, 2), Direction.LEFT)]
@@ -46,11 +46,11 @@ class TestBFSSolver:
             board_w=7,
             board_h=7,
             num_walls=20,  # More walls to make it harder
-            num_mice=5,    # More mice
-            num_rockets=1, # Fewer rockets
-            num_cats=2,    # More cats
-            num_holes=5,   # More holes
-            arrow_budget=2, # Very limited arrows
+            num_mice=5,  # More mice
+            num_rockets=1,  # Fewer rockets
+            num_cats=2,  # More cats
+            num_holes=5,  # More holes
+            arrow_budget=2,  # Very limited arrows
         )
 
         board_builder = BoardBuilder(config, seed=123)
@@ -59,14 +59,14 @@ class TestBFSSolver:
 
         # Create BFS solver with tight limits
         solver = BFSSolver(depth_cap=3, timeout_ms=10)
-        
+
         # Solve the puzzle
         result = solver.solve(engine)
-        
+
         # With such tight constraints, it should timeout or hit depth limit
         assert result.time_taken_ms <= 50  # Should be close to timeout
-        assert result.nodes_explored > 0   # Should have explored some nodes
-        
+        assert result.nodes_explored > 0  # Should have explored some nodes
+
         # May or may not find solution due to constraints
         if result.success:
             assert result.solution_length <= config.arrow_budget
@@ -78,7 +78,7 @@ class TestBFSSolver:
             board_h=5,
             num_walls=0,
             num_mice=1,
-            num_rockets=1, 
+            num_rockets=1,
             num_cats=0,
             num_holes=0,
             arrow_budget=0,  # No arrows allowed!
@@ -90,12 +90,12 @@ class TestBFSSolver:
 
         # Create BFS solver
         solver = BFSSolver(depth_cap=5, timeout_ms=100)
-        
+
         # Solve the puzzle
         result = solver.solve(engine)
-        
+
         # Should not find solution (assuming mouse can't reach rocket without arrows)
-        # Note: This test might fail if the random generation happens to place 
+        # Note: This test might fail if the random generation happens to place
         # mouse right next to rocket. That's okay - it's a probabilistic test.
         assert result.nodes_explored >= 1  # Should have tried at least initial state
 
@@ -125,13 +125,13 @@ class TestDifficultyScorer:
             ((1, 5), Direction.DOWN),
             ((6, 1), Direction.LEFT),
         ]
-        
+
         score = DifficultyScorer.score_puzzle(engine, solution)
-        
+
         # Expected: 1.0 * 2 (solution length) + 4.0 * 1 (cats) + 2.0 * 2 (holes) = 10.0
         expected_score = 1.0 * 2 + 4.0 * 1 + 2.0 * 2
         assert score == expected_score
-        
+
         # Test label assignment
         label = DifficultyScorer.get_difficulty_label(score)
         assert label == DifficultyLabel.EASY  # Score of 10 is Easy

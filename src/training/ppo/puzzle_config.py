@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.game.levels import Level
 
+
 @dataclass
 class PuzzleSpec:
     """Specification for a puzzle difficulty level."""
@@ -22,6 +23,7 @@ class PuzzleSpec:
     holes_range: Tuple[int, int]
     walls_range: Tuple[int, int]
     rockets_range: Tuple[int, int]
+
 
 @dataclass
 class SpriteConfig:
@@ -54,8 +56,8 @@ class PuzzleConfig:
     mice: List[SpriteConfig]
     cats: List[SpriteConfig]
     holes: List[SpriteConfig]
-    puzzle_id: str = "unknown"
-    difficulty: str = "unknown"
+    puzzle_id: str
+    difficulty: str
     _level: Optional[Level] = None  # Internal use only, not serialized
 
     @classmethod

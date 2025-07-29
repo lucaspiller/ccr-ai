@@ -20,7 +20,7 @@ class PPOConfig:
     early_terminate_on_success: bool = True  # Terminate when all mice scored
 
     # PPO Algorithm parameters
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-4  # Reduced from 3e-4 for better stability
     lr_schedule: str = "cosine"  # cosine, linear, constant
     lr_warmup_steps: int = 10000  # 5% warmup
 
@@ -46,10 +46,10 @@ class PPOConfig:
     rollout_length: int = 2048  # Steps per update
     batch_size: int = 64  # Minibatch size during updates
     ppo_epochs: int = 4  # Reuse each batch N times
-    max_grad_norm: float = 1.0
+    max_grad_norm: float = 0.5  # Reduced from 1.0 for tighter gradient control
 
     # Value function parameters
-    value_loss_coeff: float = 0.5
+    value_loss_coeff: float = 0.25  # Reduced from 0.5 to reduce value head impact
     value_head_init_std: float = (
         1e-4  # Small initialization to avoid large early advantages
     )
@@ -57,12 +57,24 @@ class PPOConfig:
     # Training parameters
     total_env_steps: int = 10_000_000
     eval_frequency: int = 100_000  # Steps between evaluations
-    save_frequency: int = 100_000  # Steps between checkpoints
     log_frequency: int = 10_000  # Steps between training logs
+
+    # Continuous training options
+    continuous_training: bool = False  # Run indefinitely, ignore total_env_steps
+    max_training_hours: float = (
+        8.0  # Maximum training time in hours (for overnight runs)
+    )
+    regenerate_puzzles_when_exhausted: bool = (
+        True  # Regenerate puzzle set when curriculum exhausted
+    )
 
     # Curriculum parameters
     curriculum_window_steps: int = 10_000  # Sliding window for curriculum advancement
     curriculum_success_threshold: float = 0.8  # Advance when solve rate ≥ 80%
+    curriculum_easy_only: bool = False  # Only train on easy puzzles (no progression)
+    curriculum_max_difficulty: str = (
+        "hard"  # Maximum difficulty level (easy, medium, hard)
+    )
 
     # Reward function parameters (normalized for PPO stability)
     reward_mouse_saved: float = 1.0
@@ -85,11 +97,16 @@ class PPOConfig:
     # Logging
     log_dir: str = "logs/ppo"
     use_tensorboard: bool = True
+    verbose_env_logging: bool = False  # Detailed environment logging (for evaluation)
 
     # Success criteria
     target_medium_solve_rate: float = 0.85  # +15pp over 70% BC baseline
     target_hard_solve_rate: float = 0.60  # +10pp over 50% BC baseline
     target_efficiency_ratio: float = 1.3  # Average steps ≤ 1.3× BFS optimal
+
+    # Early stopping for continuous training
+    early_stop_on_target: bool = False  # Stop when targets achieved
+    patience_hours: float = 2.0  # Stop if no improvement for N hours
 
     def __post_init__(self):
         """Validate configuration."""

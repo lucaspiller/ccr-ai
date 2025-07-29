@@ -6,12 +6,17 @@ import pytest
 import torch
 
 from src.game.sprites import SpriteType
-from src.perception.data_types import (PerceptionConfig, PerceptionMetrics,
-                                       PerceptionOutput)
-from src.perception.processors import (BatchGameStateProcessor,
-                                       GameStateProcessor,
-                                       get_combined_embedding,
-                                       process_game_state)
+from src.perception.data_types import (
+    PerceptionConfig,
+    PerceptionMetrics,
+    PerceptionOutput,
+)
+from src.perception.processors import (
+    BatchGameStateProcessor,
+    GameStateProcessor,
+    get_combined_embedding,
+    process_game_state,
+)
 
 
 class TestPerceptionOutput:
@@ -289,7 +294,7 @@ class TestGameStateProcessor:
         assert shapes["grid_tensor"] == (28, 10, 14)
         assert shapes["global_features"] == (16,)
         assert shapes["cat_embedding"] == (32,)
-        assert shapes["combined_embedding"] == (35888, )
+        assert shapes["combined_embedding"] == (35888,)
 
 
 class TestBatchGameStateProcessor:

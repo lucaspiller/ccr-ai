@@ -1,8 +1,7 @@
 import pytest
 
 from src.game.board import Direction
-from src.game.sprites import (Cat, Mouse, Rocket, SpriteManager, SpriteState,
-                              SpriteType)
+from src.game.sprites import Cat, Mouse, Rocket, SpriteManager, SpriteState, SpriteType
 
 
 class TestSprites:

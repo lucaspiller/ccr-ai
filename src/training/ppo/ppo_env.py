@@ -6,11 +6,10 @@ Handles the two-phase puzzle structure:
 2. Execution Phase: Game runs automatically until completion/failure
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
-
 
 from ...game.actions import PlaceArrowAction, RemoveArrowAction
 from ...game.board import Board, CellType, Direction
@@ -20,6 +19,7 @@ from ...perception.processors import GameStateProcessor
 from ...state_fusion.processors import StateFusionProcessor
 from ...util.action_utils import create_action_mask
 from .config import PPOConfig
+from .logger import logger
 from .puzzle_config import PuzzleConfig, SpriteConfig
 
 
@@ -50,6 +50,10 @@ class PPOEnvironment:
         state_fusion_processor: StateFusionProcessor,
         puzzle_config: Optional[PuzzleConfig] = None,
     ):
+        self.logger = logger.bind(
+            component="ppo_env", id=puzzle_config.puzzle_id if puzzle_config else "init"
+        )
+
         self.config = config
         self.perception_processor = perception_processor
         self.state_fusion_processor = state_fusion_processor
@@ -84,9 +88,7 @@ class PPOEnvironment:
             "game_result": None,
         }
 
-    def reset(
-        self, puzzle_config: Optional[PuzzleConfig] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def reset(self, puzzle_config: PuzzleConfig) -> Tuple[torch.Tensor, torch.Tensor]:
         """Reset environment and start new episode.
 
         Args:
@@ -95,8 +97,9 @@ class PPOEnvironment:
         Returns:
             Tuple of (observation, action_mask)
         """
-        if puzzle_config:
-            self.current_puzzle_config = puzzle_config
+        self.logger = logger.bind(component="ppo_env", id=puzzle_config.puzzle_id)
+        self.logger.debug(f"Preparing environment for puzzle {puzzle_config.puzzle_id}")
+        self.current_puzzle_config = puzzle_config
 
         # Create new game instance
         self._create_new_game()
@@ -129,18 +132,20 @@ class PPOEnvironment:
         }
 
         # Debug info
-        puzzle_id = self.current_puzzle_config.puzzle_id or "unknown"
+        puzzle_id = self.current_puzzle_config.puzzle_id
         rockets_count = len(self.current_puzzle_config.rockets)
         cats_count = len(self.current_puzzle_config.cats)
-        print(
+        self.logger.info(
             f"    Reset environment for {puzzle_id}: {self.game_engine.board.width}x{self.game_engine.board.height} "
             f"board, {self.initial_mice_count} mice, {cats_count} cats, {rockets_count} rockets, budget={self.arrow_budget}"
         )
 
         # Debug puzzle config
         if rockets_count == 0:
-            print(f"    WARNING: No rockets in puzzle config!")
-            print(f"    Puzzle config keys: {list(self.current_puzzle_config.keys())}")
+            self.logger.info(f"    WARNING: No rockets in puzzle config!")
+            self.logger.info(
+                f"    Puzzle config keys: {list(self.current_puzzle_config.keys())}"
+            )
 
         # Get initial observation and action mask
         observation = self._get_observation()
@@ -163,8 +168,28 @@ class PPOEnvironment:
         if self.game_engine.phase == GamePhase.PLACEMENT:
             return self._handle_placement_step(action)
         else:
-            # In execution phase, just run game until completion
-            return self._handle_execution_phase()
+            # In execution phase, check if game is already completed
+            if self.game_engine.result != GameResult.ONGOING:
+                # Game already finished, return terminal state
+                observation = self._get_observation()
+                action_mask = self._get_action_mask()
+
+                info = {
+                    "phase": "execution_complete",
+                    "game_result": self.game_engine.result.value,
+                    "episode_stats": self.episode_stats.copy(),
+                }
+
+                return PPOStepResult(
+                    observation=observation,
+                    reward=0.0,  # No additional reward for already completed episode
+                    done=True,
+                    info=info,
+                    action_mask=action_mask,
+                )
+            else:
+                # Game still running, handle execution phase
+                return self._handle_execution_phase()
 
     def _handle_placement_step(self, action: int) -> PPOStepResult:
         """Handle action during placement phase."""
@@ -190,13 +215,13 @@ class PPOEnvironment:
                 reward = self.config.reward_arrow_cost
                 self.arrows_placed += 1
                 self.episode_stats["arrows_used"] += 1
-                print(
-                    f"      ✅ Placed arrow: {action_desc} (total: {self.arrows_placed}/{self.arrow_budget})"
+                self.logger.debug(
+                    f"      Placed arrow: {action_desc} (total: {self.arrows_placed}/{self.arrow_budget})"
                 )
             else:
-                print(f"      Failed to execute: {action_desc}")
+                self.logger.info(f"      Failed to execute: {action_desc}")
         else:
-            print(f"      Invalid action: {action_desc}")
+            self.logger.info(f"      Invalid action: {action_desc}")
 
         # Check if placement phase should end
         placement_done = (
@@ -211,7 +236,7 @@ class PPOEnvironment:
 
         if placement_done:
             # Start the game execution but mark this step as transitioning
-            print(
+            self.logger.info(
                 f"    Starting game execution with {self.arrows_placed} arrows placed"
             )
 
@@ -245,7 +270,8 @@ class PPOEnvironment:
 
     def _handle_execution_phase(self) -> PPOStepResult:
         """Handle execution phase - run game until completion."""
-        print(f"      Executing game simulation...")
+        if self.config.verbose_env_logging:
+            self.logger.info(f"      Executing game simulation...")
         total_reward = 0.0
         execution_steps = 0
 
@@ -261,15 +287,19 @@ class PPOEnvironment:
 
             # Log significant events
             if step_reward != 0:
-                print(
-                    f"        Tick {execution_steps}: reward={step_reward:.2f} "
-                    f"(mice in rocket: {self._count_mice_in_rocket()}, "
-                    f"cats: {self._count_cats_in_rocket()})"
-                )
+                if self.config.verbose_env_logging:
+                    self.logger.info(
+                        f"        Tick {execution_steps}: reward={step_reward:.2f} "
+                        f"(mice in rocket: {self._count_mice_in_rocket()}, "
+                        f"cats: {self._count_cats_in_rocket()})"
+                    )
 
             # Check for timeout
             if execution_steps >= self.config.execution_timeout:
-                print(f"        Execution timeout at {execution_steps} ticks")
+                if self.config.verbose_env_logging:
+                    self.logger.info(
+                        f"        Execution timeout at {execution_steps} ticks"
+                    )
                 break
 
         # Calculate final reward and determine if episode is done
@@ -284,15 +314,17 @@ class PPOEnvironment:
         self.episode_stats["game_result"] = self.game_engine.result.value
 
         if self.game_engine.result == GameResult.SUCCESS:
-            print(f"      🎉 Game won after {execution_steps} ticks")
+            self.logger.info(f"      🎉 Game won after {execution_steps} ticks")
         else:
-            print(
+            self.logger.info(
                 f"      Game finished: {self.game_engine.result.value} after {execution_steps} ticks"
             )
-        print(
-            f"      Final stats: {self.episode_stats['mice_saved']} mice saved, "
-            f"{self.episode_stats['cats_fed']} cats fed, total reward={total_reward:.2f}"
-        )
+
+        if self.config.verbose_env_logging:
+            self.logger.info(
+                f"      Final stats: {self.episode_stats['mice_saved']} mice saved, "
+                f"{self.episode_stats['cats_fed']} cats fed, total reward={total_reward:.2f}"
+            )
 
         # Get final observation (though episode is done)
         observation = self._get_observation()
@@ -380,11 +412,11 @@ class PPOEnvironment:
 
         # Check for NaN in the observation
         if torch.isnan(fused_output.fused_embedding).any():
-            print(f"Warning: NaN detected in fused_embedding!")
-            print(f"Game phase: {self.game_engine.phase}")
-            print(f"Arrows placed: {self.arrows_placed}/{self.arrow_budget}")
+            self.logger.info(f"Warning: NaN detected in fused_embedding!")
+            self.logger.info(f"Game phase: {self.game_engine.phase}")
+            self.logger.info(f"Arrows placed: {self.arrows_placed}/{self.arrow_budget}")
             # Debug the pipeline
-            print(
+            self.logger.info(
                 f"Perception output shapes: grid={getattr(perception_output, 'grid_embedding', 'None')}, "
                 f"global={getattr(perception_output, 'global_features', 'None')}, "
                 f"cat={getattr(perception_output, 'cat_embedding', 'None')}"
@@ -394,8 +426,8 @@ class PPOEnvironment:
 
         # Also check for inf
         if torch.isinf(fused_output.fused_embedding).any():
-            print(f"Warning: Inf detected in fused_embedding!")
-            print(
+            self.logger.info(f"Warning: Inf detected in fused_embedding!")
+            self.logger.info(
                 f"Min: {fused_output.fused_embedding.min()}, Max: {fused_output.fused_embedding.max()}"
             )
             # Clamp to reasonable range
@@ -408,14 +440,18 @@ class PPOEnvironment:
         if self.game_engine.phase == GamePhase.PLACEMENT:
             # During placement, mask based on arrow budget and valid positions
             mask = self._get_placement_action_mask()
-            print(
-                f"      Action mask: {mask.sum()} valid actions (phase=placement, arrows={self.arrows_placed}/{self.arrow_budget})"
-            )
+            if self.config.verbose_env_logging:
+                self.logger.info(
+                    f"      Action mask: {mask.sum()} valid actions (phase=placement, arrows={self.arrows_placed}/{self.arrow_budget})"
+                )
             return mask
         else:
             # During execution, no actions allowed
             mask = torch.zeros(700, dtype=torch.bool)
-            print(f"      Action mask: {mask.sum()} valid actions (phase=execution)")
+            if self.config.verbose_env_logging:
+                self.logger.info(
+                    f"      Action mask: {mask.sum()} valid actions (phase=execution)"
+                )
             return mask
 
     def _get_placement_action_mask(self) -> torch.Tensor:
@@ -425,7 +461,7 @@ class PPOEnvironment:
             self.game_engine.board.width, self.game_engine.board.height
         )
 
-        print(
+        self.logger.debug(
             f"        Basic mask: {basic_mask.sum()} valid actions for {self.game_engine.board.width}x{self.game_engine.board.height} board"
         )
 
@@ -433,7 +469,7 @@ class PPOEnvironment:
         if self.arrows_placed >= self.arrow_budget:
             # Mask all placement actions, allow only start game
             placement_mask = torch.zeros_like(basic_mask)
-            print(f"        Arrow budget exhausted, no valid actions")
+            self.logger.info(f"        Arrow budget exhausted, no valid actions")
             # TODO: Define start game action index properly
             return placement_mask
 
@@ -464,7 +500,7 @@ class PPOEnvironment:
                 return False
             return success
         except Exception as e:
-            print(f"Action execution failed: {e}")
+            self.logger.info(f"Action execution failed: {e}")
             return False
 
     def _action_index_to_game_action(self, action_index: int):
@@ -473,12 +509,12 @@ class PPOEnvironment:
         from ...util.action_utils import decode_action
 
         # Debug action conversion
-        print(f"        Converting action {action_index}")
+        self.logger.debug(f"        Converting action {action_index}")
 
         try:
             # Use the standardized action decoding
             action_info = decode_action(action_index)
-            print(
+            self.logger.debug(
                 f"        -> {action_info.action_type} at ({action_info.x},{action_info.y})"
             )
 
@@ -499,11 +535,13 @@ class PPOEnvironment:
                 return RemoveArrowAction(x=action_info.x, y=action_info.y)
 
             else:
-                print(f"        -> Unknown action type: {action_info.action_type}")
+                self.logger.warn(
+                    f"        -> Unknown action type: {action_info.action_type}"
+                )
                 return None
 
         except Exception as e:
-            print(f"        -> Failed to decode action: {e}")
+            self.logger.error(f"        -> Failed to decode action: {e}")
             return None
 
     def _get_start_game_action(self) -> int:
@@ -605,6 +643,8 @@ class PPOEnvironment:
                 SpriteConfig(x=1, y=1, direction="DOWN"),
             ],
             holes=[],
+            puzzle_id="default_test_puzzle",
+            difficulty="easy",
         )
 
 
@@ -654,19 +694,38 @@ class PPOEnvironmentManager:
         return torch.stack(observations), torch.stack(action_masks)
 
     def step_all(
-        self, actions: torch.Tensor
+        self, actions: torch.Tensor, auto_reset_puzzles: Optional[List] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[Dict], torch.Tensor]:
-        """Step all environments.
+        """Step all environments with optional auto-reset.
 
         Args:
             actions: Tensor of actions for each environment
+            auto_reset_puzzles: List of puzzle configs for auto-reset (optional)
 
         Returns:
             Tuple of (observations, rewards, dones, infos, action_masks)
         """
         results = []
+        reset_puzzle_idx = 0
+
         for i, env in enumerate(self.envs):
             result = env.step(actions[i].item())
+
+            # Auto-reset environment if done and puzzles provided
+            if (
+                result.done
+                and auto_reset_puzzles
+                and reset_puzzle_idx < len(auto_reset_puzzles)
+            ):
+                new_puzzle = auto_reset_puzzles[reset_puzzle_idx]
+                reset_puzzle_idx += 1
+                reset_observation, reset_action_mask = env.reset(new_puzzle)
+
+                # Keep the original reward and done flag, but use new observation/mask
+                result = replace(
+                    result, observation=reset_observation, action_mask=reset_action_mask
+                )
+
             results.append(result)
 
         observations = torch.stack([r.observation for r in results])
