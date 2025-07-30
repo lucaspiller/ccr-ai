@@ -69,12 +69,18 @@ class PPOModelEvaluator:
         if difficulty is None:
             if self.config.curriculum_easy_only:
                 difficulty = "easy"
-                print(f"\nEvaluating model on easy puzzles only (training was easy-only mode) ({num_puzzles} puzzles)...")
+                print(
+                    f"\nEvaluating model on easy puzzles only (training was easy-only mode) ({num_puzzles} puzzles)..."
+                )
             else:
-                print(f"\nEvaluating model on all difficulties ({num_puzzles} puzzles each)...")
+                print(
+                    f"\nEvaluating model on all difficulties ({num_puzzles} puzzles each)..."
+                )
         else:
-            print(f"\nEvaluating model on {difficulty} difficulty ({num_puzzles} puzzles)...")
-        
+            print(
+                f"\nEvaluating model on {difficulty} difficulty ({num_puzzles} puzzles)..."
+            )
+
         start_time = time.time()
 
         # Create evaluator
@@ -132,10 +138,10 @@ class PPOModelEvaluator:
             easy_rate = results.get("easy_solve_rate", 0.0)
             easy_target = 0.8  # Reasonable target for easy puzzles
             easy_status = "✅ MET" if easy_rate >= easy_target else "❌ NOT MET"
-            
+
             print("SUCCESS CRITERIA (Easy-only training):")
             print(f"Easy   ≥ {easy_target:.3f}: {easy_rate:.3f} {easy_status}")
-            
+
             if easy_rate >= easy_target:
                 print("\n🏆 SUCCESS CRITERIA MET! 🏆")
             else:

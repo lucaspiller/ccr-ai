@@ -30,7 +30,6 @@ from .ppo_evaluator import EvaluationResult, PPOEvaluator
 from .ppo_trainer import PPOTrainer
 from .rollout_buffer import PPOExperience, RolloutBuffer
 from .train_ppo import PPOTrainingManager
-from .utils import count_parameters, get_device, save_ppo_checkpoint
 
 __all__ = [
     # Main classes
@@ -48,10 +47,6 @@ __all__ = [
     # Evaluation
     "PPOEvaluator",
     "EvaluationResult",
-    # Utilities
-    "get_device",
-    "count_parameters",
-    "save_ppo_checkpoint",
 ]
 
 # Version info

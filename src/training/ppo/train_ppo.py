@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 from .config import PPOConfig
 from .ppo_trainer import PPOTrainer
-from .utils import (create_directories, format_training_time,
+from .utils import (format_training_time,
                     print_training_header, validate_config)
 
 
@@ -41,10 +41,6 @@ class PPOTrainingManager:
                 for issue in issues:
                     print(f"  - {issue}")
                 return {"error": "Configuration validation failed", "issues": issues}
-
-            # Create necessary directories
-            print("Creating directories...")
-            create_directories(self.config)
 
             # Print training header
             print_training_header(self.config)

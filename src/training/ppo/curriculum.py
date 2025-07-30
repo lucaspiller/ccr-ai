@@ -12,8 +12,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .config import PPOConfig
 from src.puzzle_generator import PuzzleGenerator
+
+from .config import PPOConfig
 
 
 class CurriculumStage:

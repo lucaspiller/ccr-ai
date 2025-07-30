@@ -2,7 +2,6 @@ import os
 from typing import Any, Dict, Optional, Tuple
 
 import torch
-import torch.nn as nn
 
 from src.perception.data_types import PerceptionConfig
 from src.perception.processors import GameStateProcessor
@@ -24,7 +23,6 @@ class ModelLoader:
         """
         self.model_path = model_path
         self.device = self._get_device(device)
-        self.checkpoint_type = None
         self.checkpoint_data = None
 
         # Model components (initialized when loaded)
@@ -38,7 +36,6 @@ class ModelLoader:
             self.load_model()
             print(f"Model: {model_path}")
             print(f"Device: {self.device}")
-            print(f"Checkpoint type: {self.checkpoint_type}")
             print(f"Total parameters: {self.parameter_count:,}")
 
     def _get_device(self, device_str: str) -> torch.device:
@@ -65,60 +62,6 @@ class ModelLoader:
         total += sum(p.numel() for p in self.policy_processor.policy_head.parameters())
         total += sum(p.numel() for p in self.value_head.parameters())
         return total
-
-    def _detect_checkpoint_type(self, checkpoint: Dict[str, Any]) -> str:
-        """Detect whether checkpoint is BC or PPO format.
-
-        Args:
-            checkpoint: Loaded checkpoint dictionary
-
-        Returns:
-            Checkpoint type ('bc' or 'ppo')
-        """
-        # PPO checkpoints have these top-level keys
-        ppo_indicators = {"global_step", "optimizer", "scheduler", "value_head"}
-
-        # BC checkpoints typically have nested structure
-        bc_indicators = {"model_state_dict", "state_dict"}
-
-        if any(key in checkpoint for key in ppo_indicators):
-            return "ppo"
-        elif any(key in checkpoint for key in bc_indicators):
-            return "bc"
-        elif all(
-            key in checkpoint for key in ["cnn_encoder", "state_fusion", "policy_head"]
-        ):
-            # Direct state dict format (could be either, assume BC if no value_head)
-            return "ppo" if "value_head" in checkpoint else "bc"
-        else:
-            raise ValueError(
-                f"Unable to detect checkpoint format. Available keys: {list(checkpoint.keys())}"
-            )
-
-    def _extract_state_dict(
-        self, checkpoint: Dict[str, Any], checkpoint_type: str
-    ) -> Dict[str, Any]:
-        """Extract model state dictionary from checkpoint.
-
-        Args:
-            checkpoint: Loaded checkpoint
-            checkpoint_type: Type of checkpoint ('bc' or 'ppo')
-
-        Returns:
-            Model state dictionary
-        """
-        if checkpoint_type == "ppo":
-            # PPO checkpoints have state dicts at top level
-            return checkpoint
-        else:
-            # BC checkpoints have nested structure
-            if "model_state_dict" in checkpoint:
-                return checkpoint["model_state_dict"]
-            elif "state_dict" in checkpoint:
-                return checkpoint["state_dict"]
-            else:
-                # Assume direct state dict
-                return checkpoint
 
     def _create_value_head(
         self, input_dim: int = 128, hidden_dim: int = 64
@@ -157,23 +100,14 @@ class ModelLoader:
         )
         self.checkpoint_data = checkpoint
 
-        # Detect checkpoint type
-        self.checkpoint_type = self._detect_checkpoint_type(checkpoint)
-        print(f"Detected checkpoint type: {self.checkpoint_type}")
-
         # Extract state dictionary
-        state_dict = self._extract_state_dict(checkpoint, self.checkpoint_type)
+        state_dict = checkpoint
 
         # Validate required components
         required_components = ["cnn_encoder", "state_fusion", "policy_head"]
         missing_components = [
             comp for comp in required_components if comp not in state_dict
         ]
-
-        # For PPO checkpoints, value_head is required
-        if self.checkpoint_type == "ppo" and "value_head" not in state_dict:
-            missing_components.append("value_head")
-
         if missing_components:
             raise ValueError(f"Missing required components: {missing_components}")
 
@@ -201,13 +135,13 @@ class ModelLoader:
         self.policy_processor.to(self.device)
 
         # Load or create value head
-        if self.checkpoint_type == "ppo":
+        if "value_head" in state_dict:
             # Load existing value head from PPO checkpoint
             self.value_head = self._create_value_head()
             value_head_state = state_dict["value_head"]
             self.value_head.load_state_dict(value_head_state)
         else:
-            # Create dummy value head for BC checkpoints
+            # Create empty value head
             self.value_head = self._create_value_head()
 
         self.value_head.to(self.device)
@@ -220,23 +154,6 @@ class ModelLoader:
 
         self.parameter_count = self._count_parameters()
         print("Model loaded successfully")
-
-        # Return metadata
-        metadata = {
-            "checkpoint_type": self.checkpoint_type,
-            "global_step": checkpoint.get("global_step", 0),
-            "parameter_count": self.parameter_count,
-        }
-
-        if self.checkpoint_type == "ppo":
-            metadata.update(
-                {
-                    "best_eval_score": checkpoint.get("best_eval_score", 0.0),
-                    "config": checkpoint.get("config"),
-                }
-            )
-
-        return metadata
 
     def get_bc_components(
         self,
@@ -269,11 +186,6 @@ class ModelLoader:
         if self.perception_processor is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        if self.value_head is None:
-            raise RuntimeError(
-                "Value head not available. Load a PPO checkpoint or create a fresh value head."
-            )
-
         return (
             self.perception_processor,
             self.state_fusion_processor,
@@ -281,34 +193,20 @@ class ModelLoader:
             self.value_head,
         )
 
-    def get_checkpoint_info(self) -> Dict[str, Any]:
-        """Get information about the loaded checkpoint.
+    def get_metadata(self, training_run: str) -> Optional[Dict[str, Any]]:
+        """Get metadata for a specific training run from loaded checkpoint.
+
+        Args:
+            training_run: Name of training run ('bc_set', 'bc_seq_lite', 'ppo')
 
         Returns:
-            Dictionary with checkpoint information
+            Dictionary with training run metadata, or None if not found
         """
         if self.checkpoint_data is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        info = {
-            "path": self.model_path,
-            "type": self.checkpoint_type,
-            "parameter_count": self.parameter_count,
-            "device": str(self.device),
-        }
-
-        if self.checkpoint_type == "ppo":
-            info.update(
-                {
-                    "global_step": self.checkpoint_data.get("global_step", 0),
-                    "best_eval_score": self.checkpoint_data.get("best_eval_score", 0.0),
-                    "has_optimizer": "optimizer" in self.checkpoint_data,
-                    "has_scheduler": "scheduler" in self.checkpoint_data,
-                    "config": self.checkpoint_data.get("config"),
-                }
-            )
-
-        return info
+        # Return specific run metadata
+        return self.checkpoint_data.get(training_run)
 
     def get_device(self) -> torch.device:
         """Get the device used for model loading."""

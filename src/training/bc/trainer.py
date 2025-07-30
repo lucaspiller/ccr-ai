@@ -13,13 +13,13 @@ import torch.optim as optim
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 
+from ...model.model_saver import ModelSaver
 from ...perception.data_types import PerceptionConfig
 from ...perception.processors import GameStateProcessor
 from ...policy.processors import PolicyProcessor
 from ...state_fusion.processors import StateFusionProcessor
 from .config import BCConfig
 from .data_loader import create_data_loaders, get_device
-from .model_manager import ModelManager
 from .viz_board import viz_board
 
 
@@ -41,8 +41,8 @@ class BCTrainer:
         self.state_fusion_processor = StateFusionProcessor()
         self.policy_processor = PolicyProcessor()
 
-        # Create model manager
-        self.model_manager = ModelManager(config)
+        # Create model saver
+        self.model_saver = ModelSaver(config.model_dir)
 
         # Training state
         self.current_epoch = 0
@@ -124,35 +124,6 @@ class BCTrainer:
             # Force invalid actions to be negative targets (guaranteed 0)
             corrected_targets = targets.clone()
             corrected_targets[masks == 0] = 0.0
-
-            # Apply top-k suppression if enabled
-            if self.config.use_topk_suppression:
-                # Vectorized top-k suppression for speed
-                batch_size = logits.size(0)
-
-                # For simplicity, use max arrow budget + 2 for all samples
-                # This avoids per-sample loops while being conservative
-                max_k = int(arrow_budgets.max().item()) + 2
-
-                # Get top-k indices for entire batch [batch_size, max_k]
-                _, top_indices = torch.topk(logits, max_k, dim=1)
-
-                # Create suppression mask: start with all suppressed
-                suppression_mask = torch.full_like(
-                    logits, self.config.topk_suppression_value
-                )
-
-                # Use scatter to keep only top-k values
-                batch_indices = (
-                    torch.arange(batch_size, device=logits.device)
-                    .unsqueeze(1)
-                    .expand(-1, max_k)
-                )
-                suppression_mask[batch_indices, top_indices] = logits[
-                    batch_indices, top_indices
-                ]
-
-                logits = suppression_mask
 
             # Apply label smoothing to corrected targets
             # positive targets: 1.0 -> (1.0 - eps + eps/2) = 1.0 - eps/2
@@ -401,12 +372,7 @@ class BCTrainer:
             #    val_metrics = self.validate()
             #    self._handle_validation_results(val_metrics)
 
-            # Save checkpoint
-            if self.current_step % self.config.save_frequency == 0:
-                current_avg_loss = total_loss / total_samples
-                self._save_checkpoint(
-                    current_avg_loss, 0.0
-                )  # Pass 0.0 for jaccard since we don't compute it
+            # Note: Removed step-based checkpoint saving, now only save during validation
 
         # Epoch metrics - only loss
         epoch_loss = total_loss / len(self.train_loader)
@@ -587,9 +553,6 @@ class BCTrainer:
             Final training metrics
         """
         print(f"Starting training on {self.device}")
-        print(
-            f"Model size: {self.model_manager.get_model_size_mb(self.policy_processor.policy_head):.2f} MB"
-        )
 
         patience_counter = 0
         start_time = time.time()
@@ -619,18 +582,18 @@ class BCTrainer:
                     f"Steps: {self.current_step}, "
                 )
 
+                # Save latest model during evaluation
+                self._save_checkpoint(
+                    train_metrics["train_loss"],
+                    0.0,
+                    val_metrics,
+                    is_final=False,
+                )
+
                 # Check for improvement
                 if val_metrics["val_jaccard"] > self.best_val_jaccard:
                     self.best_val_jaccard = val_metrics["val_jaccard"]
                     patience_counter = 0
-
-                    # Save best model
-                    self._save_checkpoint(
-                        train_metrics["train_loss"],
-                        0.0,  # No training jaccard computed
-                        val_metrics,
-                        is_best=True,
-                    )
                 else:
                     patience_counter += 1
 
@@ -664,24 +627,12 @@ class BCTrainer:
             "total_steps": self.current_step,
         }
 
-        # Create composite state dict for final model
-        final_composite_state_dict = {
-            "cnn_encoder": self.perception_processor.get_cnn_encoder().state_dict(),
-            "state_fusion": self.state_fusion_processor.fusion_mlp.state_dict(),
-            "policy_head": self.policy_processor.policy_head.state_dict(),
-        }
-
-        class CompositeModel(torch.nn.Module):
-            def __init__(self, state_dict):
-                super().__init__()
-                self._state_dict = state_dict
-
-            def state_dict(self):
-                return self._state_dict
-
-        final_composite_model = CompositeModel(final_composite_state_dict)
-
-        self.model_manager.save_final_model(final_composite_model, final_metrics)
+        # Save final checkpoint with new naming convention
+        self._save_checkpoint(
+            0.0,  # No final train loss needed
+            0.0,  # No final train jaccard needed
+            is_final=True,
+        )
 
         return final_metrics
 
@@ -701,38 +652,26 @@ class BCTrainer:
         train_loss: float,
         train_jaccard: float,
         val_metrics: Optional[Dict[str, float]] = None,
-        is_best: bool = False,
+        is_final: bool = False,
     ) -> None:
         """Save model checkpoint."""
         metrics = {"train_loss": train_loss, "train_jaccard": train_jaccard}
         if val_metrics:
             metrics.update(val_metrics)
 
-        # Create composite state dict with all model components
-        composite_state_dict = {
-            "cnn_encoder": self.perception_processor.get_cnn_encoder().state_dict(),
-            "state_fusion": self.state_fusion_processor.fusion_mlp.state_dict(),
-            "policy_head": self.policy_processor.policy_head.state_dict(),
-        }
-
-        # Create a dummy module to hold the composite state dict
-        class CompositeModel(torch.nn.Module):
-            def __init__(self, state_dict):
-                super().__init__()
-                self._state_dict = state_dict
-
-            def state_dict(self):
-                return self._state_dict
-
-        composite_model = CompositeModel(composite_state_dict)
-
-        self.model_manager.save_checkpoint(
-            model=composite_model,
+        # Use model saver to save checkpoint in standardized format
+        self.model_saver.save_bc_set_checkpoint(
+            cnn_encoder=self.perception_processor.get_cnn_encoder(),
+            state_fusion=self.state_fusion_processor.fusion_mlp,
+            policy_head=self.policy_processor.policy_head,
             optimizer=self.optimizer,
+            scheduler=self.scheduler,
             epoch=self.current_epoch,
             step=self.current_step,
+            best_val_jaccard=self.best_val_jaccard,
             metrics=metrics,
-            is_best=is_best,
+            config=self.config,
+            is_final=is_final,
         )
 
     def _initialize_mps_models(self) -> None:

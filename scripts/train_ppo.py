@@ -62,8 +62,8 @@ def parse_args():
 
     parser.add_argument(
         "--resume",
-        action="store_true", 
-        help="Resume from latest checkpoint (model/ppo_checkpoint_latest.pth)"
+        action="store_true",
+        help="Resume from latest checkpoint (model/ppo_checkpoint_latest.pth)",
     )
 
     # Continuous training options
@@ -168,7 +168,6 @@ def main():
                 f"\n✅ Training completed successfully in {format_training_time(results['total_time'])}"
             )
 
-            
             sys.exit(0)
         else:
             print(

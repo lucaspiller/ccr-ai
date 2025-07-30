@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from ...model.model_loader import ModelLoader
+from ...model.model_saver import ModelSaver
 from .collect_rollout import collect_rollout as _collect_rollout
 from .config import PPOConfig
 from .curriculum import CurriculumManager
@@ -71,6 +72,9 @@ class PPOTrainer:
             policy_processor=self.policy_processor,
             value_head=self.value_head,
         )
+
+        # Initialize model saver
+        self.model_saver = ModelSaver(config.model_dir)
 
         # Training state
         self.global_step = 0
@@ -130,7 +134,6 @@ class PPOTrainer:
         )
         checkpoint_info = model_loader.load_model()
 
-        # Get loaded components (ModelLoader always provides value_head)
         (
             self.perception_processor,
             self.state_fusion_processor,
@@ -138,32 +141,45 @@ class PPOTrainer:
             self.value_head,
         ) = model_loader.get_ppo_components()
 
-        # Log checkpoint information
-        print(f"Loaded {checkpoint_info['checkpoint_type']} checkpoint")
-        if checkpoint_info["checkpoint_type"] == "ppo":
-            print(f"PPO checkpoint from step {checkpoint_info['global_step']}")
-            if "best_eval_score" in checkpoint_info:
-                print(f"Best eval score: {checkpoint_info['best_eval_score']:.3f}")
+        # Check for different training run metadata
+        bc_set_info = model_loader.get_metadata("bc_set")
+        bc_seq_lite_info = model_loader.get_metadata("bc_seq_lite")
+        ppo_info = model_loader.get_metadata("ppo")
 
+        if ppo_info:
+            print(f"Source: PPO training (step {ppo_info['global_step']})")
+            print(f"PPO best eval score: {ppo_info.get('best_eval_score', 'N/A'):.3f}")
+        elif bc_seq_lite_info:
+            print(
+                f"Source: BC Sequence Lite training (epoch {bc_seq_lite_info['epoch']}, step {bc_seq_lite_info['step']})"
+            )
+            print(
+                f"BC Seq Lite best accuracy: {bc_seq_lite_info.get('best_val_accuracy', 'N/A'):.3f}"
+            )
+        elif bc_set_info:
+            print(
+                f"Source: BC-Set training (epoch {bc_set_info['epoch']}, step {bc_set_info['step']})"
+            )
+            print(
+                f"BC-Set best Jaccard: {bc_set_info.get('best_val_jaccard', 'N/A'):.3f}"
+            )
+        else:
+            print("Source: Unknown training method")
 
         # Apply backbone freezing if configured
         if self.config.freeze_backbone:
             self._freeze_backbone()
             print("Backbone frozen: CNN and fusion layers are not trainable")
 
-        print(
-            f"Model components loaded successfully ({checkpoint_info['parameter_count']:,} parameters)\n"
-        )
-
     def _freeze_backbone(self):
         """Freeze CNN encoder and state fusion layers."""
         # Freeze CNN encoder
         cnn_encoder = self.perception_processor.get_cnn_encoder()
         cnn_encoder.requires_grad_(False)
-        
+
         # Freeze state fusion processor (freeze the fusion_mlp inside it)
         self.state_fusion_processor.fusion_mlp.requires_grad_(False)
-        
+
         # Keep policy head and value head trainable
         self.policy_processor.policy_head.requires_grad_(True)
         self.value_head.requires_grad_(True)
@@ -188,7 +204,9 @@ class PPOTrainer:
         # Filter out parameters that don't require gradients
         trainable_parameters = [p for p in parameters if p.requires_grad]
 
-        return optim.AdamW(trainable_parameters, lr=self.config.learning_rate, weight_decay=1e-4)
+        return optim.AdamW(
+            trainable_parameters, lr=self.config.learning_rate, weight_decay=1e-4
+        )
 
     def _create_scheduler(self):
         """Create learning rate scheduler."""
@@ -517,7 +535,9 @@ class PPOTrainer:
 
             # Save checkpoint
             self._save_checkpoint()
-            print(f"Step {self.global_step:,} completed in {time.time() - rollout_start:.2f} seconds\n")
+            print(
+                f"Step {self.global_step:,} completed in {time.time() - rollout_start:.2f} seconds\n"
+            )
 
         # Final evaluation and save
         final_eval = self.evaluator.evaluate()
@@ -616,17 +636,6 @@ class PPOTrainer:
         print(f"Medium solve rate: {eval_results.get('medium_solve_rate', 0.0):.3f}")
         print(f"Hard solve rate: {eval_results.get('hard_solve_rate', 0.0):.3f}")
 
-        # Save best model and check for improvements
-        current_score = eval_results.get("medium_solve_rate", 0.0)
-        if current_score > self.best_eval_score:
-            old_best = self.best_eval_score
-            self.best_eval_score = current_score
-            self.last_improvement_time = time.time()  # Reset patience timer
-            self._save_checkpoint(is_best=True)
-            print(
-                f"New best model saved! Score: {current_score:.3f} (prev: {old_best:.3f})"
-            )
-
         # Check if we've achieved target performance
         medium_rate = eval_results.get("medium_solve_rate", 0.0)
         hard_rate = eval_results.get("hard_solve_rate", 0.0)
@@ -641,35 +650,48 @@ class PPOTrainer:
                 )
                 self.target_achieved = True
 
-    def _save_checkpoint(self, is_best: bool = False, is_final: bool = False):
+    def _save_checkpoint(self, is_final: bool = False):
         """Save model checkpoint."""
-        checkpoint = {
-            "global_step": self.global_step,
-            "best_eval_score": self.best_eval_score,
-            "cnn_encoder": self.perception_processor.get_cnn_encoder().state_dict(),
-            "state_fusion": self.state_fusion_processor.fusion_mlp.state_dict(),
-            "policy_head": self.policy_processor.policy_head.state_dict(),
-            "value_head": self.value_head.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "scheduler": self.scheduler.state_dict(),
-            "config": self.config,
+        # Prepare metrics for saving
+        metrics = {
+            "policy_loss": (
+                self.training_stats["policy_loss"][-1]
+                if self.training_stats["policy_loss"]
+                else 0.0
+            ),
+            "value_loss": (
+                self.training_stats["value_loss"][-1]
+                if self.training_stats["value_loss"]
+                else 0.0
+            ),
+            "entropy_loss": (
+                self.training_stats["entropy_loss"][-1]
+                if self.training_stats["entropy_loss"]
+                else 0.0
+            ),
+            "kl_divergence": (
+                self.training_stats["kl_divergence"][-1]
+                if self.training_stats["kl_divergence"]
+                else 0.0
+            ),
+            "explained_variance": (
+                self.training_stats["explained_variance"][-1]
+                if self.training_stats["explained_variance"]
+                else 0.0
+            ),
         }
 
-        # Save regular checkpoint
-        os.makedirs(self.config.model_dir, exist_ok=True)
-        checkpoint_path = os.path.join(
-            self.config.model_dir, f"{self.config.checkpoint_name}_latest.pth"
+        # Use model saver to save checkpoint in standardized format
+        self.model_saver.save_ppo_checkpoint(
+            cnn_encoder=self.perception_processor.get_cnn_encoder(),
+            state_fusion=self.state_fusion_processor.fusion_mlp,
+            policy_head=self.policy_processor.policy_head,
+            value_head=self.value_head,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            global_step=self.global_step,
+            best_eval_score=self.best_eval_score,
+            metrics=metrics,
+            config=self.config,
+            is_final=is_final,
         )
-        torch.save(checkpoint, checkpoint_path)
-
-        # Save best model
-        if is_best:
-            best_path = os.path.join(self.config.model_dir, self.config.best_model_name)
-            torch.save(checkpoint, best_path)
-
-        if is_final:
-            final_path = os.path.join(
-                self.config.model_dir, self.config.final_model_name
-            )
-            torch.save(checkpoint, final_path)
-            print(f"Final model saved to {final_path}")

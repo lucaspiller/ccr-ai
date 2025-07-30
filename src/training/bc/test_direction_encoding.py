@@ -23,7 +23,6 @@ from ...state_fusion.processors import StateFusionProcessor
 from ...util.action_utils import decode_action, encode_action
 from .config import BCConfig
 from .data_loader import create_data_loaders, get_device
-from .model_manager import ModelManager
 from .viz_board import viz_board
 
 

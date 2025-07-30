@@ -36,10 +36,6 @@ class BCConfig:
     use_negative_logit_penalty: bool = True  # Add penalty for positive logits
     negative_logit_penalty_weight: float = 1e-4  # Weight for negative logit penalty
 
-    # Top-k suppression
-    use_topk_suppression: bool = False  # Apply top-(k+2) suppression before loss
-    topk_suppression_value: float = -2.0  # Value to set suppressed logits to
-
     # Evaluation parameters
     val_frequency_steps: int = 5000  # Steps between validation runs (legacy)
     val_frequency_epochs: int = 10  # Epochs between validation runs

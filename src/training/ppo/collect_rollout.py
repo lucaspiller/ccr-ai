@@ -222,7 +222,9 @@ def collect_rollout(
             episode_count += step_episode_count
 
             # Calculate average score across completed episodes
-            avg_score = total_episode_score / episode_count if episode_count > 0 else 0.0
+            avg_score = (
+                total_episode_score / episode_count if episode_count > 0 else 0.0
+            )
 
             # Update progress bar
             pbar.set_postfix(

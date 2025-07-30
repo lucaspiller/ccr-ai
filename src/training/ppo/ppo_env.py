@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
+from src.puzzle_generator import PuzzleConfig, SpriteConfig
+
 from ...game.actions import PlaceArrowAction, RemoveArrowAction
 from ...game.board import Board, CellType, Direction
 from ...game.engine import GameEngine, GamePhase, GameResult
@@ -20,7 +22,6 @@ from ...state_fusion.processors import StateFusionProcessor
 from ...util.action_utils import create_action_mask
 from .config import PPOConfig
 from .logger import logger
-from src.puzzle_generator import PuzzleConfig, SpriteConfig
 
 
 @dataclass

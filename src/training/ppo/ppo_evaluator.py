@@ -14,13 +14,14 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 
+from src.puzzle_generator import PuzzleConfig, PuzzleGenerator
+
 from ...perception.processors import GameStateProcessor
 from ...policy.processors import PolicyProcessor
 from ...state_fusion.processors import StateFusionProcessor
 from .config import PPOConfig
 from .logger import logger
 from .ppo_env import PPOEnvironment
-from src.puzzle_generator import PuzzleConfig, PuzzleGenerator
 
 
 @dataclass
