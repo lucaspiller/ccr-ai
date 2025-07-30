@@ -204,19 +204,8 @@ class ModelLoader:
         if self.checkpoint_type == "ppo":
             # Load existing value head from PPO checkpoint
             self.value_head = self._create_value_head()
-
-            # Handle prefixed keys in value_head state dict
             value_head_state = state_dict["value_head"]
-            if any(key.startswith("value_head.") for key in value_head_state.keys()):
-                # Remove "value_head." prefix from keys
-                cleaned_state = {
-                    key.replace("value_head.", ""): value
-                    for key, value in value_head_state.items()
-                }
-                self.value_head.load_state_dict(cleaned_state)
-            else:
-                # Keys are already clean
-                self.value_head.load_state_dict(value_head_state)
+            self.value_head.load_state_dict(value_head_state)
         else:
             # Create dummy value head for BC checkpoints
             self.value_head = self._create_value_head()

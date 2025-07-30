@@ -55,17 +55,26 @@ class PPOModelEvaluator:
         verbose: bool = True,
         difficulty: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Evaluate model on all difficulty levels.
+        """Evaluate model on difficulty levels matching training configuration.
 
         Args:
             num_puzzles_per_difficulty: Number of puzzles per difficulty
             verbose: Whether to print detailed results
-            difficulty: Specific difficulty to evaluate ('easy', 'medium', 'hard', or None for all)
+            difficulty: Specific difficulty to evaluate ('easy', 'medium', 'hard', or None for training-appropriate)
 
         Returns:
             Dictionary with evaluation results
         """
-        print(f"\nEvaluating model on all difficulties ({num_puzzles} puzzles each)...")
+        # If no specific difficulty provided, use training-appropriate difficulty
+        if difficulty is None:
+            if self.config.curriculum_easy_only:
+                difficulty = "easy"
+                print(f"\nEvaluating model on easy puzzles only (training was easy-only mode) ({num_puzzles} puzzles)...")
+            else:
+                print(f"\nEvaluating model on all difficulties ({num_puzzles} puzzles each)...")
+        else:
+            print(f"\nEvaluating model on {difficulty} difficulty ({num_puzzles} puzzles)...")
+        
         start_time = time.time()
 
         # Create evaluator
@@ -117,24 +126,39 @@ class PPOModelEvaluator:
 
         print("-" * 70)
 
-        # Print success criteria
-        medium_target = 0.85  # From config
-        hard_target = 0.60  # From config
-
-        medium_rate = results.get("medium_solve_rate", 0.0)
-        hard_rate = results.get("hard_solve_rate", 0.0)
-
-        medium_status = "✅ MET" if medium_rate >= medium_target else "❌ NOT MET"
-        hard_status = "✅ MET" if hard_rate >= hard_target else "❌ NOT MET"
-
-        print("SUCCESS CRITERIA:")
-        print(f"Medium ≥ {medium_target:.3f}: {medium_rate:.3f} {medium_status}")
-        print(f"Hard   ≥ {hard_target:.3f}: {hard_rate:.3f} {hard_status}")
-
-        if medium_rate >= medium_target and hard_rate >= hard_target:
-            print("\n🏆 ALL SUCCESS CRITERIA MET! 🏆")
+        # Print success criteria based on training mode
+        if self.config.curriculum_easy_only:
+            # Easy-only mode: just show easy performance
+            easy_rate = results.get("easy_solve_rate", 0.0)
+            easy_target = 0.8  # Reasonable target for easy puzzles
+            easy_status = "✅ MET" if easy_rate >= easy_target else "❌ NOT MET"
+            
+            print("SUCCESS CRITERIA (Easy-only training):")
+            print(f"Easy   ≥ {easy_target:.3f}: {easy_rate:.3f} {easy_status}")
+            
+            if easy_rate >= easy_target:
+                print("\n🏆 SUCCESS CRITERIA MET! 🏆")
+            else:
+                print("\n⚠️  Success criteria not yet met")
         else:
-            print("\n⚠️  Some success criteria not yet met")
+            # Full curriculum mode: show medium and hard criteria
+            medium_target = 0.85  # From config
+            hard_target = 0.60  # From config
+
+            medium_rate = results.get("medium_solve_rate", 0.0)
+            hard_rate = results.get("hard_solve_rate", 0.0)
+
+            medium_status = "✅ MET" if medium_rate >= medium_target else "❌ NOT MET"
+            hard_status = "✅ MET" if hard_rate >= hard_target else "❌ NOT MET"
+
+            print("SUCCESS CRITERIA:")
+            print(f"Medium ≥ {medium_target:.3f}: {medium_rate:.3f} {medium_status}")
+            print(f"Hard   ≥ {hard_target:.3f}: {hard_rate:.3f} {hard_status}")
+
+            if medium_rate >= medium_target and hard_rate >= hard_target:
+                print("\n🏆 ALL SUCCESS CRITERIA MET! 🏆")
+            else:
+                print("\n⚠️  Some success criteria not yet met")
 
         print("=" * 70)
 
@@ -196,17 +220,41 @@ def main():
             difficulty=("easy" if args.difficulty == "easy" else None),
         )
 
-        # Print final summary
+        # Print final summary and exit with appropriate code
         if not args.quiet:
-            easy_rate = results.get("easy_solve_rate", 0.0)
-            print(f"\nFinal Result: {easy_rate:.1%} solve rate on easy puzzles")
-
-        # Exit with appropriate code
-        easy_rate = results.get("easy_solve_rate", 0.0)
-        if easy_rate >= 0.8:  # 80% threshold
-            sys.exit(0)
+            if evaluator.config.curriculum_easy_only:
+                easy_rate = results.get("easy_solve_rate", 0.0)
+                print(f"\nFinal Result: {easy_rate:.1%} solve rate on easy puzzles")
+                # Exit with appropriate code for easy-only training
+                if easy_rate >= 0.8:  # 80% threshold
+                    sys.exit(0)
+                else:
+                    sys.exit(1)
+            else:
+                # Full curriculum mode - check medium and hard targets
+                medium_rate = results.get("medium_solve_rate", 0.0)
+                hard_rate = results.get("hard_solve_rate", 0.0)
+                print(f"\nFinal Result: Medium {medium_rate:.1%}, Hard {hard_rate:.1%}")
+                # Exit with appropriate code for full curriculum
+                if medium_rate >= 0.85 and hard_rate >= 0.60:
+                    sys.exit(0)
+                else:
+                    sys.exit(1)
         else:
-            sys.exit(1)
+            # Handle quiet mode
+            if evaluator.config.curriculum_easy_only:
+                easy_rate = results.get("easy_solve_rate", 0.0)
+                if easy_rate >= 0.8:
+                    sys.exit(0)
+                else:
+                    sys.exit(1)
+            else:
+                medium_rate = results.get("medium_solve_rate", 0.0)
+                hard_rate = results.get("hard_solve_rate", 0.0)
+                if medium_rate >= 0.85 and hard_rate >= 0.60:
+                    sys.exit(0)
+                else:
+                    sys.exit(1)
 
     except Exception as e:
         print(f"Error: {e}")

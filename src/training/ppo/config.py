@@ -12,6 +12,7 @@ class PPOConfig:
 
     # Data parameters
     bc_model_path: str = "model/bc_final.pth"
+    freeze_backbone: bool = True  # Freeze CNN and fusion layers, only train policy head
 
     # Environment parameters
     num_parallel_envs: int = 16
@@ -78,11 +79,11 @@ class PPOConfig:
 
     # Reward function parameters (normalized for PPO stability)
     reward_mouse_saved: float = 1.0
-    reward_cat_fed: float = -1.5
-    reward_mouse_lost_hole: float = -1.0
+    reward_cat_fed: float = -0.1
+    reward_mouse_lost_hole: float = -0.1
     reward_arrow_cost: float = -0.05
     reward_success_bonus: float = 5.0
-    reward_failure_penalty: float = -1.0
+    reward_failure_penalty: float = 0
 
     # Hardware
     device: str = "auto"  # auto, cpu, cuda, mps

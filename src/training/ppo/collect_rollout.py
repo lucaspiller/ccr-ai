@@ -80,6 +80,7 @@ def collect_rollout(
     total_value = 0.0
     step_count = 0
     episode_count = 0
+    total_episode_score = 0.0  # Running total of episode scores
 
     # Create progress bar for rollout collection
     with tqdm(
@@ -210,18 +211,24 @@ def collect_rollout(
                 if "episode_stats" in info:
                     stats = info["episode_stats"]
                     if "final_reward" in info:
-                        rollout_stats["episode_rewards"].append(info["final_reward"])
+                        final_reward = info["final_reward"]
+                        rollout_stats["episode_rewards"].append(final_reward)
                         rollout_stats["episode_lengths"].append(
                             stats["placement_steps"] + stats["execution_ticks"]
                         )
                         step_episode_count += 1
+                        total_episode_score += final_reward
 
             episode_count += step_episode_count
+
+            # Calculate average score across completed episodes
+            avg_score = total_episode_score / episode_count if episode_count > 0 else 0.0
 
             # Update progress bar
             pbar.set_postfix(
                 {
                     "episodes": episode_count,
+                    "avg_score": f"{avg_score:.3f}",
                     "entropy": f"{entropy.item():.4f}",
                     "value": f"{values.mean().item():.3f}",
                     "reward": f"{rewards.mean().item() if len(rewards) > 0 else 0.0:.3f}",

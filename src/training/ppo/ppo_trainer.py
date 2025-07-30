@@ -145,27 +145,50 @@ class PPOTrainer:
             if "best_eval_score" in checkpoint_info:
                 print(f"Best eval score: {checkpoint_info['best_eval_score']:.3f}")
 
+
+        # Apply backbone freezing if configured
+        if self.config.freeze_backbone:
+            self._freeze_backbone()
+            print("Backbone frozen: CNN and fusion layers are not trainable")
+
         print(
             f"Model components loaded successfully ({checkpoint_info['parameter_count']:,} parameters)\n"
         )
+
+    def _freeze_backbone(self):
+        """Freeze CNN encoder and state fusion layers."""
+        # Freeze CNN encoder
+        cnn_encoder = self.perception_processor.get_cnn_encoder()
+        cnn_encoder.requires_grad_(False)
+        
+        # Freeze state fusion processor (freeze the fusion_mlp inside it)
+        self.state_fusion_processor.fusion_mlp.requires_grad_(False)
+        
+        # Keep policy head and value head trainable
+        self.policy_processor.policy_head.requires_grad_(True)
+        self.value_head.requires_grad_(True)
 
     def _create_optimizer(self) -> optim.Optimizer:
         """Create optimizer for all trainable parameters."""
         parameters = []
 
-        # Add CNN encoder parameters
-        parameters.extend(self.perception_processor.get_cnn_encoder().parameters())
+        if not self.config.freeze_backbone:
+            # Add CNN encoder parameters if not frozen
+            parameters.extend(self.perception_processor.get_cnn_encoder().parameters())
 
-        # Add state fusion parameters
-        parameters.extend(self.state_fusion_processor.fusion_mlp.parameters())
+            # Add state fusion parameters if not frozen
+            parameters.extend(self.state_fusion_processor.fusion_mlp.parameters())
 
-        # Add policy head parameters
+        # Always add policy head parameters (trainable in both modes)
         parameters.extend(self.policy_processor.policy_head.parameters())
 
-        # Add value head parameters
+        # Always add value head parameters (trainable in both modes)
         parameters.extend(self.value_head.parameters())
 
-        return optim.AdamW(parameters, lr=self.config.learning_rate, weight_decay=1e-4)
+        # Filter out parameters that don't require gradients
+        trainable_parameters = [p for p in parameters if p.requires_grad]
+
+        return optim.AdamW(trainable_parameters, lr=self.config.learning_rate, weight_decay=1e-4)
 
     def _create_scheduler(self):
         """Create learning rate scheduler."""
@@ -494,6 +517,7 @@ class PPOTrainer:
 
             # Save checkpoint
             self._save_checkpoint()
+            print(f"Step {self.global_step:,} completed in {time.time() - rollout_start:.2f} seconds\n")
 
         # Final evaluation and save
         final_eval = self.evaluator.evaluate()

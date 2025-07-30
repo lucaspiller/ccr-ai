@@ -167,6 +167,8 @@ def main():
             print(
                 f"\n✅ Training completed successfully in {format_training_time(results['total_time'])}"
             )
+
+            
             sys.exit(0)
         else:
             print(
