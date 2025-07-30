@@ -20,7 +20,7 @@ from ...state_fusion.processors import StateFusionProcessor
 from ...util.action_utils import create_action_mask
 from .config import PPOConfig
 from .logger import logger
-from .puzzle_config import PuzzleConfig, SpriteConfig
+from src.puzzle_generator import PuzzleConfig, SpriteConfig
 
 
 @dataclass

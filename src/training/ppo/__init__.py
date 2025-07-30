@@ -28,7 +28,6 @@ from .curriculum import CurriculumManager
 from .ppo_env import PPOEnvironment, PPOEnvironmentManager
 from .ppo_evaluator import EvaluationResult, PPOEvaluator
 from .ppo_trainer import PPOTrainer
-from .puzzle_config import PuzzleSpec
 from .rollout_buffer import PPOExperience, RolloutBuffer
 from .train_ppo import PPOTrainingManager
 from .utils import count_parameters, get_device, save_ppo_checkpoint
@@ -46,7 +45,6 @@ __all__ = [
     "PPOExperience",
     # Curriculum
     "CurriculumManager",
-    "PuzzleSpec",
     # Evaluation
     "PPOEvaluator",
     "EvaluationResult",

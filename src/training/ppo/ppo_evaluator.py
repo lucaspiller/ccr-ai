@@ -20,8 +20,7 @@ from ...state_fusion.processors import StateFusionProcessor
 from .config import PPOConfig
 from .logger import logger
 from .ppo_env import PPOEnvironment
-from .puzzle_config import PuzzleConfig
-from .puzzle_generator import PuzzleGenerator
+from src.puzzle_generator import PuzzleConfig, PuzzleGenerator
 
 
 @dataclass

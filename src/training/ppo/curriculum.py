@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from .config import PPOConfig
-from .puzzle_generator import PuzzleGenerator
+from src.puzzle_generator import PuzzleGenerator
 
 
 class CurriculumStage:
